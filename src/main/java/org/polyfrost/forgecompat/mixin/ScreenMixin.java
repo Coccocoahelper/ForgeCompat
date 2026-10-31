@@ -2,6 +2,8 @@ package org.polyfrost.forgecompat.mixin;
 
 import java.util.List;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -12,7 +14,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Screen.class)
@@ -23,22 +24,19 @@ public abstract class ScreenMixin {
     @Shadow
     protected Minecraft minecraft;
 
-    @Shadow
-    protected abstract void buttonClicked(ButtonWidget button);
-
     @Inject(method = "init(Lnet/minecraft/client/Minecraft;II)V", at = @At("TAIL"))
     private void forgecompat$initGuiPost(Minecraft minecraft, int width, int height, CallbackInfo ci) {
         MinecraftForge.EVENT_BUS.post(new GuiScreenEvent.InitGuiEvent.Post((Screen) (Object) this, buttons));
     }
 
-    @Redirect(method = "mouseClicked", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/widget/ButtonWidget;mouseClicked(Lnet/minecraft/client/Minecraft;II)Z"))
-    private boolean forgecompat$actionPerformedPre(ButtonWidget button, Minecraft minecraft, int mouseX, int mouseY) {
-        return button.mouseClicked(minecraft, mouseX, mouseY) && !MinecraftForge.EVENT_BUS.post(new GuiScreenEvent.ActionPerformedEvent.Pre((Screen) (Object) this, button, buttons));
+    @WrapOperation(method = "mouseClicked", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/widget/ButtonWidget;mouseClicked(Lnet/minecraft/client/Minecraft;II)Z"))
+    private boolean forgecompat$actionPerformedPre(ButtonWidget button, Minecraft minecraft, int mouseX, int mouseY, Operation<Boolean> original) {
+        return original.call(button, minecraft, mouseX, mouseY) && !MinecraftForge.EVENT_BUS.post(new GuiScreenEvent.ActionPerformedEvent.Pre((Screen) (Object) this, button, buttons));
     }
 
-    @Redirect(method = "mouseClicked", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/screen/Screen;buttonClicked(Lnet/minecraft/client/gui/widget/ButtonWidget;)V"))
-    private void forgecompat$actionPerformedPost(Screen screen, ButtonWidget button) {
-        buttonClicked(button);
+    @WrapOperation(method = "mouseClicked", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/screen/Screen;buttonClicked(Lnet/minecraft/client/gui/widget/ButtonWidget;)V"))
+    private void forgecompat$actionPerformedPost(Screen screen, ButtonWidget button, Operation<Void> original) {
+        original.call(screen, button);
         if (equals(minecraft.screen)) MinecraftForge.EVENT_BUS.post(new GuiScreenEvent.ActionPerformedEvent.Post(screen, button, buttons));
     }
 

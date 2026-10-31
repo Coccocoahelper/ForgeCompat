@@ -1,5 +1,7 @@
 package org.polyfrost.forgecompat.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.ClientPlayerInteractionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.TickTimer;
@@ -13,12 +15,10 @@ import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Mouse;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Minecraft.class)
@@ -46,16 +46,16 @@ public class MinecraftMixin {
         MinecraftForge.EVENT_BUS.post(new TickEvent.RenderTickEvent(TickEvent.Phase.END, timer.partialTick));
     }
 
-    @Redirect(method = "tick()V", at = @At(value = "INVOKE", target = "Lorg/lwjgl/input/Mouse;next()Z", remap = false))
-    private boolean forgecompat$mouseEvent() {
-        while (Mouse.next()) {
+    @WrapOperation(method = "tick()V", at = @At(value = "INVOKE", target = "Lorg/lwjgl/input/Mouse;next()Z", remap = false))
+    private boolean forgecompat$mouseEvent(Operation<Boolean> original) {
+        while (original.call()) {
             if (!MinecraftForge.EVENT_BUS.post(new MouseEvent())) return true;
         }
         return false;
     }
 
-    @Redirect(method = "doUse", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/ClientPlayerInteractionManager;useBlock(Lnet/minecraft/client/entity/living/player/LocalClientPlayerEntity;Lnet/minecraft/client/world/ClientWorld;Lnet/minecraft/item/ItemStack;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/util/math/Direction;Lnet/minecraft/util/math/Vec3d;)Z"))
-    private boolean forgecompat$rightClickBlock(ClientPlayerInteractionManager manager, LocalClientPlayerEntity player, ClientWorld world, ItemStack stack, BlockPos pos, Direction face, Vec3d hit) {
-        return !MinecraftForge.EVENT_BUS.post(new PlayerInteractEvent(player, PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK, pos, face, world)) && manager.useBlock(player, world, stack, pos, face, hit);
+    @WrapOperation(method = "doUse", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/ClientPlayerInteractionManager;useBlock(Lnet/minecraft/client/entity/living/player/LocalClientPlayerEntity;Lnet/minecraft/client/world/ClientWorld;Lnet/minecraft/item/ItemStack;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/util/math/Direction;Lnet/minecraft/util/math/Vec3d;)Z"))
+    private boolean forgecompat$rightClickBlock(ClientPlayerInteractionManager manager, LocalClientPlayerEntity player, ClientWorld world, ItemStack stack, BlockPos pos, Direction face, Vec3d hit, Operation<Boolean> original) {
+        return !MinecraftForge.EVENT_BUS.post(new PlayerInteractEvent(player, PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK, pos, face, world)) && original.call(manager, player, world, stack, pos, face, hit);
     }
 }
