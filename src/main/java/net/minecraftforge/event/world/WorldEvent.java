@@ -1,0 +1,18 @@
+package net.minecraftforge.event.world;
+
+import net.minecraft.world.World;
+import net.minecraftforge.fml.common.eventhandler.Event;
+
+public class WorldEvent extends Event {
+    public final World world;
+
+    public WorldEvent(World world) {
+        this.world = world;
+    }
+
+    public static class Load extends WorldEvent {
+        public Load(World world) {
+            super(world);
+        }
+    }
+}

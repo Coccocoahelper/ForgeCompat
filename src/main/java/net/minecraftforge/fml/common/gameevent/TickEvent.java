@@ -18,4 +18,13 @@ public class TickEvent extends Event {
             super(phase);
         }
     }
+
+    public static class RenderTickEvent extends TickEvent {
+        public final float renderTickTime;
+
+        public RenderTickEvent(Phase phase, float renderTickTime) {
+            super(phase);
+            this.renderTickTime = renderTickTime;
+        }
+    }
 }

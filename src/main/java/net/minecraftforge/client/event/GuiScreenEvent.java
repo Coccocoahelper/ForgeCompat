@@ -1,5 +1,6 @@
 package net.minecraftforge.client.event;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.client.gui.screen.Screen;
@@ -42,6 +43,54 @@ public class GuiScreenEvent extends Event {
         public static class Post extends MouseInputEvent {
             public Post(Screen gui) {
                 super(gui);
+            }
+        }
+    }
+
+    public static class DrawScreenEvent extends GuiScreenEvent {
+        public final int mouseX;
+        public final int mouseY;
+        public final float renderPartialTicks;
+
+        public DrawScreenEvent(Screen gui, int mouseX, int mouseY, float renderPartialTicks) {
+            super(gui);
+            this.mouseX = mouseX;
+            this.mouseY = mouseY;
+            this.renderPartialTicks = renderPartialTicks;
+        }
+
+        public static class Pre extends DrawScreenEvent {
+            public Pre(Screen gui, int mouseX, int mouseY, float renderPartialTicks) {
+                super(gui, mouseX, mouseY, renderPartialTicks);
+            }
+        }
+
+        public static class Post extends DrawScreenEvent {
+            public Post(Screen gui, int mouseX, int mouseY, float renderPartialTicks) {
+                super(gui, mouseX, mouseY, renderPartialTicks);
+            }
+        }
+    }
+
+    public static class ActionPerformedEvent extends GuiScreenEvent {
+        public ButtonWidget button;
+        public List<ButtonWidget> buttonList;
+
+        public ActionPerformedEvent(Screen gui, ButtonWidget button, List<ButtonWidget> buttonList) {
+            super(gui);
+            this.button = button;
+            this.buttonList = new ArrayList<>(buttonList);
+        }
+
+        public static class Pre extends ActionPerformedEvent {
+            public Pre(Screen gui, ButtonWidget button, List<ButtonWidget> buttonList) {
+                super(gui, button, buttonList);
+            }
+        }
+
+        public static class Post extends ActionPerformedEvent {
+            public Post(Screen gui, ButtonWidget button, List<ButtonWidget> buttonList) {
+                super(gui, button, buttonList);
             }
         }
     }
