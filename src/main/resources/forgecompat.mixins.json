@@ -6,6 +6,7 @@
   "client": [
     "ClientWorldMixin",
     "ConnectionMixin",
+    "GameRendererMixin",
     "InventoryMenuScreenMixin",
     "MinecraftMixin",
     "PlayerEntityMixin",

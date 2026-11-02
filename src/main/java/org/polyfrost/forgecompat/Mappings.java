@@ -28,6 +28,8 @@ final class Mappings {
     final Map<String, String> intToMcp = new HashMap<>();
     private final Map<String, String> mcpToInt = new HashMap<>();
     private final Map<String, String> srgToInt = new HashMap<>();
+    /** [runtime owner/]srg name + runtime desc -> name, as a srg name can cover several unrelated methods */
+    private final Map<String, String> srgMethods = new HashMap<>();
     private final Map<String, String> mcpFields = new HashMap<>();
     // "owner/name desc" -> name
     private final Map<String, String> notchMethods = new HashMap<>();
@@ -36,6 +38,8 @@ final class Mappings {
     private final Map<String, String> intFields = new HashMap<>();
     /** classes of the Forge jar being remapped, before remapping */
     final Map<String, ClassInfo> modClasses = new ConcurrentHashMap<>();
+    final Map<String, String> mixinTargets = new ConcurrentHashMap<>();
+    final Set<String> capturedFields = ConcurrentHashMap.newKeySet();
     private final Map<String, ClassInfo> intInfoCache = new ConcurrentHashMap<>();
 
     final Remapper toInt;
@@ -73,7 +77,12 @@ final class Mappings {
                 String name = identity ? p[4] : resolver.mapMethodName("intermediary", owner, p[4], intermediaryDescs.mapMethodDesc(p[3]));
                 notchMethods.put(p[1] + "/" + p[2] + p[3], name);
                 intMethods.put(intOwner + "/" + name + runtimeDescs.mapMethodDesc(p[3]), p[2]);
-                if (p[5].startsWith("func_")) srgToInt.put(p[5], name);
+                if (p[5].startsWith("func_")) {
+                    srgToInt.put(p[5], name);
+                    String runtimeDesc = runtimeDescs.mapMethodDesc(p[3]);
+                    srgMethods.put(p[5] + runtimeDesc, name);
+                    srgMethods.put(intOwner + "/" + p[5] + runtimeDesc, name);
+                }
             } else {
                 String name = identity ? p[4] : resolver.mapFieldName("intermediary", owner, p[4], intermediaryDescs.mapDesc(p[3]));
                 notchFields.put(p[1] + "/" + p[2] + p[3], name);
@@ -213,13 +222,17 @@ final class Mappings {
             if (type.equals("org/objectweb/asm/ClassWriter")) return "org/polyfrost/forgecompat/CompatClassWriter";
             // Mixin 0.7 shades ASM there, so mixin config plugins of Forge mods name its classes
             if (type.startsWith("org/spongepowered/asm/lib/")) return "org/objectweb/asm/" + type.substring("org/spongepowered/asm/lib/".length());
+            if (type.startsWith("gg/essential/lib/mixinextras/")) return "com/llamalad7/mixinextras/" + type.substring("gg/essential/lib/mixinextras/".length());
             return mcpToInt.get(type);
         }
 
         @Override
         public String mapMethodName(String owner, String name, String desc) {
-            String srg = toIntermediary ? srgToInt.get(name) : null;
-            if (srg != null) return srg;
+            if (toIntermediary && srgToInt.containsKey(name)) {
+                String runtimeDesc = mapMethodDesc(desc);
+                String srg = srgMethods.get(map(mixinTargets.getOrDefault(owner, owner)) + "/" + name + runtimeDesc);
+                return srg != null ? srg : srgMethods.getOrDefault(name + runtimeDesc, srgToInt.get(name));
+            }
             String mapped = find(methods, owner, "/" + name + desc);
             return mapped == null ? name : mapped;
         }

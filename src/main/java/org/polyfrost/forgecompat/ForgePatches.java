@@ -15,24 +15,13 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 final class ForgePatches {
-    private static final String HOOKS_CLIENT = "net/minecraftforge/client/ForgeHooksClient";
     private static final String MOUSE_PRE = "net/minecraftforge/client/event/GuiScreenEvent$MouseInputEvent$Pre";
     private static final String EVENT_BUS = "net/minecraftforge/fml/common/eventhandler/EventBus";
 
     static void apply(ClassNode node) {
         Mappings mappings = ForgeCompat.mappings();
         String screen = mappings.mcpToRuntime("net/minecraft/client/gui/GuiScreen");
-        if (node.name.equals(mappings.mcpToRuntime("net/minecraft/client/renderer/EntityRenderer"))) {
-            String drawScreen = mappings.srgToRuntime("func_73863_a");
-            for (AbstractInsnNode insn : method(node, mappings.srgToRuntime("func_181560_a"), "(FJ)V").instructions) {
-                if (insn instanceof MethodInsnNode call && call.owner.equals(screen) && call.name.equals(drawScreen) && call.desc.equals("(IIF)V")) {
-                    call.setOpcode(Opcodes.INVOKESTATIC);
-                    call.owner = HOOKS_CLIENT;
-                    call.name = "drawScreen";
-                    call.desc = "(L" + screen + ";IIF)V";
-                }
-            }
-        } else if (node.name.equals(mappings.mcpToRuntime("net/minecraft/client/renderer/OpenGlHelper"))) {
+        if (node.name.equals(mappings.mcpToRuntime("net/minecraft/client/renderer/OpenGlHelper"))) {
             String lightmapUnit = mappings.srgToRuntime("field_77476_b");
             node.fields.add(new FieldNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "lastBrightnessX", "F", null, null));
             node.fields.add(new FieldNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "lastBrightnessY", "F", null, null));

@@ -52,7 +52,7 @@ final class Essential {
             FabricLauncherBase.getLauncher().addToClassPath(out);
         }
 
-        Mixins.addConfiguration("mixins.essential.json");
+        ForgeCompat.addMixinConfig("mixins.essential.json");
         Mixins.registerErrorHandlerClass("gg.essential.mixins.MixinErrorHandler");
         try {
             Class.forName("gg.essential.api.tweaker.EssentialTweaker").getField("initialized").setBoolean(null, true);
