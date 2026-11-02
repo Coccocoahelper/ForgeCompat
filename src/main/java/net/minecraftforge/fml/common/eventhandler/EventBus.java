@@ -19,6 +19,10 @@ public class EventBus {
         listeners.sort(Comparator.comparing(listener -> listener.subscribe.priority()));
     }
 
+    public void unregister(Object target) {
+        listeners.removeIf(listener -> listener.target == target);
+    }
+
     public boolean post(Event event) {
         for (Listener listener : listeners) {
             if (listener.type.isInstance(event) && (!event.isCanceled() || listener.subscribe.receiveCanceled())) {

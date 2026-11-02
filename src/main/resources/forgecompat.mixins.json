@@ -4,16 +4,21 @@
   "plugin": "org.polyfrost.forgecompat.TransformerPlugin",
   "compatibilityLevel": "JAVA_8",
   "client": [
+    "ClientPlayNetworkHandlerMixin",
     "ClientWorldMixin",
     "ConnectionMixin",
+    "GameGuiMixin",
     "GameRendererMixin",
     "InventoryMenuScreenMixin",
+    "LivingEntityRendererMixin",
     "MinecraftMixin",
     "PlayerEntityMixin",
+    "PlayerRendererMixin",
     "RenderTargetMixin",
     "ScreenMixin",
     "SoundEngineMixin",
-    "TransformTargetsMixin"
+    "TransformTargetsMixin",
+    "WorldMixin"
   ],
   "injectors": {
     "defaultRequire": 1

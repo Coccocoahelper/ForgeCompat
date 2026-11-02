@@ -15,4 +15,10 @@ public class WorldEvent extends Event {
             super(world);
         }
     }
+
+    public static class Unload extends WorldEvent {
+        public Unload(World world) {
+            super(world);
+        }
+    }
 }

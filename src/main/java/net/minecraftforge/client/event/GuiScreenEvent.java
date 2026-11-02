@@ -5,6 +5,7 @@ import java.util.List;
 
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraftforge.fml.common.eventhandler.Cancelable;
 import net.minecraftforge.fml.common.eventhandler.Event;
 
 public class GuiScreenEvent extends Event {
@@ -20,6 +21,13 @@ public class GuiScreenEvent extends Event {
         public InitGuiEvent(Screen gui, List<ButtonWidget> buttonList) {
             super(gui);
             this.buttonList = buttonList;
+        }
+
+        @Cancelable
+        public static class Pre extends InitGuiEvent {
+            public Pre(Screen gui, List<ButtonWidget> buttonList) {
+                super(gui, buttonList);
+            }
         }
 
         public static class Post extends InitGuiEvent {

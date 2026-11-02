@@ -79,6 +79,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     static final Logger LOGGER = LogManager.getLogger("ForgeCompat");
     public static final Map<String, ModContainer> MODS = new ConcurrentHashMap<>();
     static final Map<String, String> GUI_FACTORIES = new ConcurrentHashMap<>();
+    /** remapped Forge mod jars, loaded as resource packs like FML does */
+    public static final List<Path> RESOURCE_JARS = new CopyOnWriteArrayList<>();
     private static final List<IClassTransformer> TRANSFORMERS = new CopyOnWriteArrayList<>();
     /** class name -> modid */
     private static final Map<String, String> MOD_CLASSES = new LinkedHashMap<>();
@@ -90,6 +92,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             "accountmanager", // Account Manager
             "godplace", // GodPlace
             "kegiultimatelatency", // Kegi Ultimate Latency
+            "keystrokes", // KeystrokesMod
+            "keystrokesmod", // Sk1er KeystrokesMod
             Essential.TWEAKER
     );
     private static final String MIXIN_TWEAKER = "org.spongepowered.asm.launch.MixinTweaker";
@@ -111,6 +115,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         Path outDir = gameDir.resolve(".forgecompat").resolve(version);
         List<String> tweakers = new ArrayList<>();
         List<String> plugins = new ArrayList<>();
+        List<Path> essentialJars = new ArrayList<>();
         try (DirectoryStream<Path> jars = Files.newDirectoryStream(FabricLoaderImpl.INSTANCE.getModsDirectory().toPath(), "*.jar")) {
             for (Path jar : jars) {
                 try (ZipFile zip = new ZipFile(jar.toFile())) {
@@ -141,18 +146,24 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     FileTime mtime = Files.getLastModifiedTime(jar);
                     boolean cached = Files.exists(remapped) && Files.getLastModifiedTime(remapped).toMillis() == mtime.toMillis();
                     if (Essential.TWEAKER.equals(tweaker)) {
-                        Essential.load(jar, zip, outDir);
-                        LOGGER.info("Loaded Essential from {} in {} ms", jar.getFileName(), (System.nanoTime() - start) / 1_000_000);
-                        continue;
+                        essentialJars.add(jar);
+                        if (zip.getEntry("essential.mod.json") != null || !SUPPORTED.contains(modId(zip))) continue;
+                        tweaker = null;
                     }
                     if (cached) scanMods(zip, jar);
                     else remapJar(readJar(zip), jar, remapped, mtime);
                     FabricLauncherBase.getLauncher().addToClassPath(remapped);
+                    RESOURCE_JARS.add(remapped);
                     if (tweaker != null && !tweaker.equals(MIXIN_TWEAKER)) tweakers.add(tweaker);
                     if (plugin != null) plugins.add(plugin);
                     for (String config : mixinConfigs) addMixinConfig(config);
                     LOGGER.info("Loaded Forge mod {} in {} ms{}", jar.getFileName(), (System.nanoTime() - start) / 1_000_000, cached ? " (cached)" : "");
                 }
+            }
+            if (!essentialJars.isEmpty()) {
+                long start = System.nanoTime();
+                Essential.load(essentialJars, outDir);
+                LOGGER.info("Loaded Essential in {} ms", (System.nanoTime() - start) / 1_000_000);
             }
         } catch (IOException e) {
             throw new RuntimeException("Failed to load Forge mods", e);
@@ -562,6 +573,23 @@ public class ForgeCompat implements PreLaunchEntrypoint {
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+            if (mixinTarget == null) return hooks(access, name, desc, signature, exceptions);
+            return new MethodNode(Opcodes.ASM9, access, name, desc, signature, exceptions) {
+                @Override
+                public void visitEnd() {
+                    if ((access & Opcodes.ACC_PRIVATE) == 0 && (isOverwrite(visibleAnnotations) || isOverwrite(invisibleAnnotations))) {
+                        access = access & ~Opcodes.ACC_PROTECTED | Opcodes.ACC_PUBLIC;
+                    }
+                    accept(hooks(access, name, desc, signature, exceptions.toArray(new String[0])));
+                }
+            };
+        }
+
+        private static boolean isOverwrite(List<AnnotationNode> annotations) {
+            return annotations != null && annotations.stream().anyMatch(annotation -> annotation.desc.equals("Lorg/spongepowered/asm/mixin/Overwrite;"));
+        }
+
+        private MethodVisitor hooks(int access, String name, String desc, String signature, String[] exceptions) {
             return new MethodVisitor(Opcodes.ASM9, super.visitMethod(access, name, desc, signature, exceptions)) {
                 @Override
                 public AnnotationVisitor visitAnnotation(String desc, boolean visible) {

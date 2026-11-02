@@ -1,10 +1,15 @@
 package org.polyfrost.forgecompat.mixin;
 
+import java.nio.file.Path;
+import java.util.List;
+
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.ClientPlayerInteractionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.TickTimer;
+import net.minecraft.client.resource.pack.ResourcePack;
+import net.minecraft.client.resource.pack.ZippedResourcePack;
 import net.minecraft.client.entity.living.player.LocalClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.item.ItemStack;
@@ -14,9 +19,14 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.polyfrost.forgecompat.ForgeCompat;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -25,6 +35,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MinecraftMixin {
     @Shadow
     private TickTimer timer;
+
+    @Shadow
+    public ClientWorld world;
+
+    @Shadow
+    @Final
+    private List<ResourcePack> requiredResourcePacks;
+
+    @Inject(method = "init", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Minecraft;reloadResources()V", ordinal = 0))
+    private void forgecompat$modResources(CallbackInfo ci) {
+        for (Path jar : ForgeCompat.RESOURCE_JARS) requiredResourcePacks.add(new ZippedResourcePack(jar.toFile()));
+    }
+
+    @Inject(method = "setWorld(Lnet/minecraft/client/world/ClientWorld;Ljava/lang/String;)V", at = @At("HEAD"))
+    private void forgecompat$worldUnload(ClientWorld world, String message, CallbackInfo ci) {
+        if (this.world != null) MinecraftForge.EVENT_BUS.post(new WorldEvent.Unload(this.world));
+    }
 
     @Inject(method = "tick()V", at = @At("HEAD"))
     private void forgecompat$tickStart(CallbackInfo ci) {
@@ -46,12 +73,25 @@ public class MinecraftMixin {
         MinecraftForge.EVENT_BUS.post(new TickEvent.RenderTickEvent(TickEvent.Phase.END, timer.partialTick));
     }
 
+    @Unique
+    private boolean forgecompat$mouseInput;
+
+    @Unique
+    private boolean forgecompat$keyInput;
+
     @WrapOperation(method = "tick()V", at = @At(value = "INVOKE", target = "Lorg/lwjgl/input/Mouse;next()Z", remap = false))
     private boolean forgecompat$mouseEvent(Operation<Boolean> original) {
+        if (forgecompat$mouseInput) MinecraftForge.EVENT_BUS.post(new InputEvent.MouseInputEvent());
         while (original.call()) {
-            if (!MinecraftForge.EVENT_BUS.post(new MouseEvent())) return true;
+            if (!MinecraftForge.EVENT_BUS.post(new MouseEvent())) return forgecompat$mouseInput = true;
         }
-        return false;
+        return forgecompat$mouseInput = false;
+    }
+
+    @WrapOperation(method = "tick()V", at = @At(value = "INVOKE", target = "Lorg/lwjgl/input/Keyboard;next()Z", remap = false))
+    private boolean forgecompat$keyEvent(Operation<Boolean> original) {
+        if (forgecompat$keyInput) MinecraftForge.EVENT_BUS.post(new InputEvent.KeyInputEvent());
+        return forgecompat$keyInput = original.call();
     }
 
     @WrapOperation(method = "doUse", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/ClientPlayerInteractionManager;useBlock(Lnet/minecraft/client/entity/living/player/LocalClientPlayerEntity;Lnet/minecraft/client/world/ClientWorld;Lnet/minecraft/item/ItemStack;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/util/math/Direction;Lnet/minecraft/util/math/Vec3d;)Z"))

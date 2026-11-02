@@ -1,6 +1,8 @@
 package net.minecraftforge.fml.common.gameevent;
 
+import net.minecraft.entity.living.player.PlayerEntity;
 import net.minecraftforge.fml.common.eventhandler.Event;
+import net.minecraftforge.fml.relauncher.Side;
 
 public class TickEvent extends Event {
     public final Phase phase;
@@ -25,6 +27,17 @@ public class TickEvent extends Event {
         public RenderTickEvent(Phase phase, float renderTickTime) {
             super(phase);
             this.renderTickTime = renderTickTime;
+        }
+    }
+
+    public static class PlayerTickEvent extends TickEvent {
+        public final Side side;
+        public final PlayerEntity player;
+
+        public PlayerTickEvent(Phase phase, PlayerEntity player) {
+            super(phase);
+            this.side = player.world.isClient ? Side.CLIENT : Side.SERVER;
+            this.player = player;
         }
     }
 }

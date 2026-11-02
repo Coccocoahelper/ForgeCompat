@@ -2,8 +2,9 @@ package org.polyfrost.forgecompat.mixin;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.living.player.PlayerEntity;
+import net.minecraftforge.common.ForgeHooks;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.entity.player.AttackEntityEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Constant;
@@ -28,6 +29,16 @@ public class PlayerEntityMixin {
 
     @Inject(method = "attack(Lnet/minecraft/entity/Entity;)V", at = @At("HEAD"), cancellable = true)
     private void forgecompat$attack(Entity target, CallbackInfo ci) {
-        if (MinecraftForge.EVENT_BUS.post(new AttackEntityEvent((PlayerEntity) (Object) this, target))) ci.cancel();
+        if (!ForgeHooks.onPlayerAttackTarget((PlayerEntity) (Object) this, target)) ci.cancel();
+    }
+
+    @Inject(method = "tick", at = @At("HEAD"))
+    private void forgecompat$tickStart(CallbackInfo ci) {
+        MinecraftForge.EVENT_BUS.post(new TickEvent.PlayerTickEvent(TickEvent.Phase.START, (PlayerEntity) (Object) this));
+    }
+
+    @Inject(method = "tick", at = @At("TAIL"))
+    private void forgecompat$tickEnd(CallbackInfo ci) {
+        MinecraftForge.EVENT_BUS.post(new TickEvent.PlayerTickEvent(TickEvent.Phase.END, (PlayerEntity) (Object) this));
     }
 }

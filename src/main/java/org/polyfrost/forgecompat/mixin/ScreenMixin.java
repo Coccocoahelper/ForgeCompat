@@ -24,6 +24,11 @@ public abstract class ScreenMixin {
     @Shadow
     protected Minecraft minecraft;
 
+    @WrapOperation(method = "init(Lnet/minecraft/client/Minecraft;II)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/screen/Screen;init()V"))
+    private void forgecompat$initGuiPre(Screen screen, Operation<Void> original) {
+        if (!MinecraftForge.EVENT_BUS.post(new GuiScreenEvent.InitGuiEvent.Pre(screen, buttons))) original.call(screen);
+    }
+
     @Inject(method = "init(Lnet/minecraft/client/Minecraft;II)V", at = @At("TAIL"))
     private void forgecompat$initGuiPost(Minecraft minecraft, int width, int height, CallbackInfo ci) {
         MinecraftForge.EVENT_BUS.post(new GuiScreenEvent.InitGuiEvent.Post((Screen) (Object) this, buttons));
