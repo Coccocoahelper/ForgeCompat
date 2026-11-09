@@ -1,0 +1,19 @@
+package net.minecraftforge.fml.common;
+
+import net.minecraftforge.fml.relauncher.Side;
+
+public class FMLCommonHandler {
+    private static final FMLCommonHandler INSTANCE = new FMLCommonHandler();
+
+    public static FMLCommonHandler instance() {
+        return INSTANCE;
+    }
+
+    public Side getSide() {
+        return Side.CLIENT;
+    }
+
+    public Side getEffectiveSide() {
+        return Side.CLIENT;
+    }
+}

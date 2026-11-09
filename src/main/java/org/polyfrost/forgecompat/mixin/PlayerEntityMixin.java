@@ -18,6 +18,10 @@ public class PlayerEntityMixin {
 
     public float eyeHeight = getDefaultEyeHeight();
 
+    public String getDisplayNameString() {
+        return ((PlayerEntity) (Object) this).getName();
+    }
+
     public float getDefaultEyeHeight() {
         return DEFAULT_EYE_HEIGHT;
     }

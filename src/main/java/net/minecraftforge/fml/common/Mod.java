@@ -18,4 +18,10 @@ public @interface Mod {
     @Target(ElementType.METHOD)
     @interface EventHandler {
     }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.FIELD)
+    @interface Instance {
+        String value() default "";
+    }
 }

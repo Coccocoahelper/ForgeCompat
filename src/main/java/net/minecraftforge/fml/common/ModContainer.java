@@ -2,6 +2,8 @@ package net.minecraftforge.fml.common;
 
 import java.io.File;
 
+import org.polyfrost.forgecompat.ForgeCompat;
+
 public interface ModContainer {
     String getModId();
 
@@ -10,4 +12,8 @@ public interface ModContainer {
     String getVersion();
 
     File getSource();
+
+    default Object getMod() {
+        return ForgeCompat.INSTANCES.get(getModId());
+    }
 }

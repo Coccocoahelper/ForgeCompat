@@ -110,6 +110,12 @@ public class Configuration {
         return get(category, key, 'B', Boolean.toString(defaultValue));
     }
 
+    public Property get(String category, String key, boolean defaultValue, String comment) {
+        Property property = get(category, key, defaultValue);
+        property.comment(comment);
+        return property;
+    }
+
     public Property get(String category, String key, int defaultValue) {
         return get(category, key, 'I', Integer.toString(defaultValue));
     }

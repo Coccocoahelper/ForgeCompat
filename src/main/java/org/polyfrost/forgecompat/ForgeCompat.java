@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -78,6 +79,7 @@ import org.spongepowered.asm.mixin.transformer.Config;
 public class ForgeCompat implements PreLaunchEntrypoint {
     static final Logger LOGGER = LogManager.getLogger("ForgeCompat");
     public static final Map<String, ModContainer> MODS = new ConcurrentHashMap<>();
+    public static final Map<String, Object> INSTANCES = new ConcurrentHashMap<>();
     static final Map<String, String> GUI_FACTORIES = new ConcurrentHashMap<>();
     /** remapped Forge mod jars, loaded as resource packs like FML does */
     public static final List<Path> RESOURCE_JARS = new CopyOnWriteArrayList<>();
@@ -94,6 +96,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             "kegiultimatelatency", // Kegi Ultimate Latency
             "keystrokes", // KeystrokesMod
             "keystrokesmod", // Sk1er KeystrokesMod
+            "MumbleLink", // MumbleLink
             Essential.TWEAKER
     );
     private static final String MIXIN_TWEAKER = "org.spongepowered.asm.launch.MixinTweaker";
@@ -285,10 +288,20 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         MOD_CLASSES.forEach((name, modid) -> {
             try {
                 Object mod = newInstance(name);
-                fire(mod, new FMLPreInitializationEvent(modid));
+                INSTANCES.put(modid, mod);
                 mods.put(name, mod);
             } catch (Throwable t) {
-                LOGGER.error("Failed to pre-initialize Forge mod {}", name, t);
+                LOGGER.error("Failed to construct Forge mod {}", name, t);
+            }
+        });
+        mods.entrySet().removeIf(entry -> {
+            try {
+                injectInstances(entry.getValue(), MOD_CLASSES.get(entry.getKey()));
+                fire(entry.getValue(), new FMLPreInitializationEvent(MOD_CLASSES.get(entry.getKey())));
+                return false;
+            } catch (Throwable t) {
+                LOGGER.error("Failed to pre-initialize Forge mod {}", entry.getKey(), t);
+                return true;
             }
         });
         mods.forEach((name, mod) -> {
@@ -300,6 +313,17 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             }
             LOGGER.info("Initialized Forge mod {} in {} ms", name, (System.nanoTime() - start) / 1_000_000);
         });
+    }
+
+    private static void injectInstances(Object mod, String modid) throws ReflectiveOperationException {
+        for (Field field : mod.getClass().getDeclaredFields()) {
+            Mod.Instance annotation = field.getAnnotation(Mod.Instance.class);
+            if (annotation == null) continue;
+            Object instance = INSTANCES.get(annotation.value().isEmpty() ? modid : annotation.value());
+            if (instance == null) continue;
+            field.setAccessible(true);
+            field.set(Modifier.isStatic(field.getModifiers()) ? null : mod, instance);
+        }
     }
 
     private static void fire(Object mod, Object event) throws ReflectiveOperationException {
