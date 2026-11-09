@@ -97,6 +97,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             "keystrokes", // KeystrokesMod
             "keystrokesmod", // Sk1er KeystrokesMod
             "MumbleLink", // MumbleLink
+            "mixins.meowtils.json", // Meowtils
             Essential.TWEAKER
     );
     private static final String MIXIN_TWEAKER = "org.spongepowered.asm.launch.MixinTweaker";
@@ -406,7 +407,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     static void remapJar(Map<String, byte[]> entries, Path source, Path out, FileTime mtime) throws IOException {
         Mappings mappings = mappings();
         entries.keySet().removeIf(name -> name.startsWith("META-INF/") && (name.endsWith(".SF") || name.endsWith(".RSA") || name.endsWith(".DSA"))
-                || name.startsWith("org/spongepowered/") || name.startsWith("META-INF/services/org.spongepowered.") || name.equals("META-INF/services/javax.annotation.processing.Processor"));
+                || name.startsWith("org/spongepowered/") || name.startsWith("org/objectweb/asm/") || name.startsWith("META-INF/services/org.spongepowered.") || name.equals("META-INF/services/javax.annotation.processing.Processor"));
         mappings.modClasses.clear();
         mappings.mixinTargets.clear();
         mappings.capturedFields.clear();
