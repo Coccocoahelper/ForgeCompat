@@ -4,6 +4,7 @@
   "plugin": "org.polyfrost.forgecompat.TransformerPlugin",
   "compatibilityLevel": "JAVA_8",
   "client": [
+    "BlockMixin",
     "ClientPlayNetworkHandlerMixin",
     "ClientWorldMixin",
     "ConnectionMixin",
