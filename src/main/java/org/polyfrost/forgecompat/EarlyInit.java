@@ -42,6 +42,7 @@ public final class EarlyInit implements LanguageAdapter {
             "keystrokes",
             "keystrokesmod",
             "MumbleLink",
+            "miniskywars",
             "mixins.meowtils.json",
             "clickgui.mixins.json",
             "mixins.myau.json",
