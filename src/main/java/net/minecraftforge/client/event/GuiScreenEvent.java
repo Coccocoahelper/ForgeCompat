@@ -55,6 +55,24 @@ public class GuiScreenEvent extends Event {
         }
     }
 
+    public static class KeyboardInputEvent extends GuiScreenEvent {
+        public KeyboardInputEvent(Screen gui) {
+            super(gui);
+        }
+
+        public static class Pre extends KeyboardInputEvent {
+            public Pre(Screen gui) {
+                super(gui);
+            }
+        }
+
+        public static class Post extends KeyboardInputEvent {
+            public Post(Screen gui) {
+                super(gui);
+            }
+        }
+    }
+
     public static class DrawScreenEvent extends GuiScreenEvent {
         public final int mouseX;
         public final int mouseY;

@@ -10,6 +10,7 @@
     "GameGuiMixin",
     "GameRendererMixin",
     "InventoryMenuScreenMixin",
+    "LivingEntityMixin",
     "LivingEntityRendererMixin",
     "MinecraftMixin",
     "PlayerEntityMixin",

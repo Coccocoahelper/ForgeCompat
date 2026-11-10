@@ -4,10 +4,12 @@ import java.nio.file.Path;
 import java.util.List;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.ClientPlayerInteractionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.TickTimer;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.resource.pack.ResourcePack;
 import net.minecraft.client.resource.pack.ZippedResourcePack;
 import net.minecraft.client.entity.living.player.LocalClientPlayerEntity;
@@ -16,6 +18,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -46,6 +49,12 @@ public class MinecraftMixin {
     @Inject(method = "init", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Minecraft;reloadResources()V", ordinal = 0))
     private void forgecompat$modResources(CallbackInfo ci) {
         for (Path jar : ForgeCompat.RESOURCE_JARS) requiredResourcePacks.add(new ZippedResourcePack(jar.toFile()));
+    }
+
+    @WrapMethod(method = "openScreen")
+    private void forgecompat$guiOpen(Screen screen, Operation<Void> original) {
+        GuiOpenEvent event = new GuiOpenEvent(screen);
+        if (!MinecraftForge.EVENT_BUS.post(event)) original.call(event.gui);
     }
 
     @Inject(method = "setWorld(Lnet/minecraft/client/world/ClientWorld;Ljava/lang/String;)V", at = @At("HEAD"))

@@ -87,17 +87,18 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     /** class name -> modid */
     private static final Map<String, String> MOD_CLASSES = new LinkedHashMap<>();
     private static final List<String> SUPPORTED = Arrays.asList(
-            "com.spiderfrog.gadgets.main.OAMTweaker", // OldAnimationsMod Cosmetics
-            "de.hdskins.forge.v1855.HdSkinsPlugin", // HDSkins
-            "mixins.hitdelayfix.json", // HitDelayFix
-            "ragonohitdelay", // Rago NoHitDelay
-            "accountmanager", // Account Manager
-            "godplace", // GodPlace
-            "kegiultimatelatency", // Kegi Ultimate Latency
-            "keystrokes", // KeystrokesMod
-            "keystrokesmod", // Sk1er KeystrokesMod
-            "MumbleLink", // MumbleLink
-            "mixins.meowtils.json", // Meowtils
+            "com.spiderfrog.gadgets.main.OAMTweaker",
+            "de.hdskins.forge.v1855.HdSkinsPlugin",
+            "mixins.hitdelayfix.json",
+            "ragonohitdelay",
+            "accountmanager",
+            "godplace",
+            "kegiultimatelatency",
+            "keystrokes",
+            "keystrokesmod",
+            "MumbleLink",
+            "mixins.meowtils.json",
+            "clickgui.mixins.json",
             Essential.TWEAKER
     );
     private static final String MIXIN_TWEAKER = "org.spongepowered.asm.launch.MixinTweaker";
