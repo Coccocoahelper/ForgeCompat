@@ -34,6 +34,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.fabricmc.loader.impl.FabricLoaderImpl;
 import net.fabricmc.loader.impl.launch.FabricLauncherBase;
+import net.fabricmc.loader.impl.lib.classtweaker.api.ClassTweakerReader;
 import net.minecraft.launchwrapper.IClassTransformer;
 import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.LaunchClassLoader;
@@ -90,6 +91,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     private static final Pattern DESC_CLASS = Pattern.compile("L([\\w/$]+);");
     private static final Pattern REFMAP_VALUE = Pattern.compile("(:\\s*\")([^\"]*)\"");
     private static final String FORGE_DRAW_SCREEN = "Lnet/minecraftforge/client/ForgeHooksClient;drawScreen(Lnet/minecraft/client/gui/GuiScreen;IIF)V";
+    private static final String FORGE_FONT_COLOR = "Lnet/minecraft/client/gui/FontRenderer;setColor(FFFF)V";
+    private static final String FORGE_ITEM_STACK = "<init>(Lnet/minecraft/item/Item;IILnet/minecraft/nbt/NBTTagCompound;)V";
     private static final String MOD_DESC ="L" + Mod.class.getName().replace('.', '/') + ";";
     private static final String MINECRAFT = "ave";
     private static final String START_GAME = "am";
@@ -137,9 +140,15 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     RESOURCE_JARS.add(remapped);
                     if (tweaker != null && !tweaker.equals(MIXIN_TWEAKER)) tweakers.add(tweaker);
                     if (plugin != null) plugins.add(plugin);
+                    String at = manifest.getValue("FMLAT");
+                    if (at != null) accessTransformers(zip, at);
                     for (String config : mixinConfigs) addMixinConfig(config);
                     LOGGER.info("Loaded Forge mod {} in {} ms{}", jar.getFileName(), (System.nanoTime() - start) / 1_000_000, cached ? " (cached)" : "");
                 }
+            }
+            if (active) {
+                String tabs = mappings().mcpToRuntime("net/minecraft/creativetab/CreativeTabs");
+                accessWidener("mutable field " + tabs + " " + mappings().srgToRuntime("field_78032_a") + " [L" + tabs + ";\n");
             }
             if (!essentialJars.isEmpty()) {
                 long start = System.nanoTime();
@@ -167,6 +176,60 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             throw new RuntimeException("Failed to load Forge coremod", e);
         }
         LOGGER.info("Set up Forge tweakers and coremods in {} ms", (System.nanoTime() - start) / 1_000_000);
+    }
+
+    private static void accessTransformers(ZipFile zip, String names) throws IOException {
+        Mappings mappings = mappings();
+        StringBuilder out = new StringBuilder();
+        for (String name : names.trim().split("\\s+")) {
+            ZipEntry entry = zip.getEntry("META-INF/" + name);
+            if (entry == null) continue;
+            String text;
+            try (InputStream in = zip.getInputStream(entry)) {
+                text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            for (String line : text.split("\n")) {
+                int hash = line.indexOf('#');
+                String[] p = (hash < 0 ? line : line.substring(0, hash)).trim().split("\\s+");
+                if (p.length < 2 || p[0].startsWith("private")) continue;
+                String mcpOwner = p[1].replace('.', '/');
+                String owner = mappings.mcpToRuntime(mcpOwner);
+                if (owner == null) {
+                    LOGGER.warn("Skipping access transformer for unknown class: {}", line);
+                    continue;
+                }
+                boolean definal = p[0].endsWith("-f");
+                if (p.length == 2) {
+                    out.append("accessible class ").append(owner).append('\n');
+                    if (definal) out.append("extendable class ").append(owner).append('\n');
+                    continue;
+                }
+                int paren = p[2].indexOf('(');
+                if (paren < 0) {
+                    String field = mappings.srgToRuntime(p[2]);
+                    String desc = field == null ? null : mappings.fieldDesc(owner, field);
+                    if (desc == null) {
+                        LOGGER.warn("Skipping access transformer for unknown field: {}", line);
+                        continue;
+                    }
+                    String target = " field " + owner + " " + field + " " + desc + "\n";
+                    out.append("accessible").append(target);
+                    if (definal) out.append("mutable").append(target);
+                } else {
+                    String srgDesc = p[2].substring(paren);
+                    String target = " method " + owner + " " + mappings.toInt.mapMethodName(mcpOwner, p[2].substring(0, paren), srgDesc) + " " + mappings.toInt.mapMethodDesc(srgDesc) + "\n";
+                    out.append("accessible").append(target);
+                    if (definal) out.append("extendable").append(target);
+                }
+            }
+        }
+        accessWidener(out.toString());
+    }
+
+    private static void accessWidener(String entries) {
+        String namespace = FabricLoader.getInstance().getMappingResolver().getCurrentRuntimeNamespace();
+        String text = "accessWidener v2 " + namespace + "\n" + entries;
+        ClassTweakerReader.create(FabricLoaderImpl.INSTANCE.getClassTweaker()).read(text.getBytes(StandardCharsets.UTF_8), namespace);
     }
 
     public static void addTransformer(String name) {
@@ -379,6 +442,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         mappings.modClasses.clear();
         mappings.mixinTargets.clear();
         mappings.capturedFields.clear();
+        mappings.uniqueMethods.clear();
         for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
             if (!entry.getKey().endsWith(".class")) continue;
             ClassReader reader = new ClassReader(entry.getValue());
@@ -413,6 +477,13 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                 }
             }
         }
+        if (mappings.mixinTargets.containsKey(node.name)) {
+            for (MethodNode method : node.methods) {
+                if (!method.name.startsWith("<") && !isMixinMember(method.visibleAnnotations) && !isMixinMember(method.invisibleAnnotations)) {
+                    mappings.uniqueMethods.add(node.name + "/" + method.name);
+                }
+            }
+        }
         for (FieldNode field : node.fields) {
             if (field.visibleAnnotations == null) continue;
             for (AnnotationNode annotation : field.visibleAnnotations) {
@@ -421,6 +492,10 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                 }
             }
         }
+    }
+
+    private static boolean isMixinMember(List<AnnotationNode> annotations) {
+        return annotations != null && annotations.stream().anyMatch(annotation -> annotation.desc.startsWith("Lorg/spongepowered/") && !annotation.desc.equals("Lorg/spongepowered/asm/mixin/Unique;"));
     }
 
     private static byte[] remapRefmap(byte[] bytes, Mappings mappings) {
@@ -492,6 +567,10 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                 // the vanilla call stays in place so Fabric mixins can target it, see GameRendererMixin
                 if (FORGE_DRAW_SCREEN.equals(value)) {
                     value = "L" + mappings().mcpToRuntime("net/minecraft/client/gui/GuiScreen") + ";" + mappings().srgToRuntime("func_73863_a") + "(IIF)V";
+                } else if (FORGE_FONT_COLOR.equals(value)) {
+                    value = "L" + mappings().mcpToRuntime("net/minecraft/client/renderer/GlStateManager") + ";" + mappings().srgToRuntime("func_179131_c") + "(FFFF)V";
+                } else if (FORGE_ITEM_STACK.equals(value)) {
+                    value = "<init>(L" + mappings().mcpToRuntime("net/minecraft/item/Item") + ";II)V";
                 } else if (value instanceof String s && s.contains("net/minecraftforge/")) {
                     Matcher matcher = DESC_CLASS.matcher(s);
                     StringBuilder out = new StringBuilder();
@@ -522,6 +601,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         private final String simpleResourceManager = mappings().mcpToRuntime("net/minecraft/client/resources/SimpleReloadableResourceManager");
         private final String reloadableResourceManager = mappings().mcpToRuntime("net/minecraft/client/resources/IReloadableResourceManager");
         private final String spawnEgg = mappings().mcpToRuntime("net/minecraft/item/ItemMonsterPlacer");
+        private final String creativeTab = mappings().mcpToRuntime("net/minecraft/creativetab/CreativeTabs");
 
         private String name;
         private String mixinTarget;
@@ -565,8 +645,14 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             return super.visitField(access, outerInstance(this.name, name, desc), desc, signature, value);
         }
 
+        private String unique(String owner, String name, String desc) {
+            if (mixinTarget == null || !owner.equals(this.name) || !mappings().uniqueMethods.contains(owner + "/" + name) || !mappings().hasMethod(mixinTarget, name, desc)) return name;
+            return name + "$forgecompat";
+        }
+
         @Override
         public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+            name = unique(this.name, name, desc);
             if (mixinTarget == null) return hooks(access, name, desc, signature, exceptions);
             return new MethodNode(Opcodes.ASM9, access, name, desc, signature, exceptions) {
                 @Override
@@ -585,9 +671,16 @@ public class ForgeCompat implements PreLaunchEntrypoint {
 
         private MethodVisitor hooks(int access, String name, String desc, String signature, String[] exceptions) {
             return new MethodVisitor(Opcodes.ASM9, super.visitMethod(access, name, desc, signature, exceptions)) {
+                private int extraStack;
+
                 @Override
                 public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                     return forgeTargets(super.visitAnnotation(desc, visible));
+                }
+
+                @Override
+                public void visitMaxs(int maxStack, int maxLocals) {
+                    super.visitMaxs(maxStack + extraStack, maxLocals);
                 }
 
                 @Override
@@ -602,6 +695,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
 
                 @Override
                 public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean itf) {
+                    name = unique(owner, name, desc);
                     if (opcode == Opcodes.INVOKEVIRTUAL && owner.equals(simpleResourceManager)) {
                         super.visitMethodInsn(Opcodes.INVOKEINTERFACE, reloadableResourceManager, name, desc, true);
                     } else if (opcode == Opcodes.INVOKESPECIAL && owner.equals(handshake) && desc.equals(handshakeDesc + "Z)V")) {
@@ -612,6 +706,13 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     } else if (opcode == Opcodes.INVOKEVIRTUAL && mappings().intToNotch.containsKey(owner) && Hooks.FORGE_METHODS.contains(name + "/" + Type.getArgumentCount(desc))
                             && !desc.startsWith("(I)")) {
                         super.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, name, "(Ljava/lang/Object;" + desc.substring(1), false);
+                    } else if (opcode == Opcodes.INVOKESPECIAL && owner.equals(creativeTab) && name.equals("<init>") && desc.equals("(Ljava/lang/String;)V")) {
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, "nextCreativeTabId", "()I", false);
+                        super.visitInsn(Opcodes.SWAP);
+                        super.visitMethodInsn(opcode, owner, name, "(ILjava/lang/String;)V", itf);
+                        extraStack = 1;
+                    } else if (opcode == Opcodes.INVOKESTATIC && owner.equals("javax/swing/UIManager") && name.equals("setLookAndFeel")) {
+                        super.visitMethodInsn(opcode, HOOKS, name, desc, false);
                     } else if (opcode == Opcodes.INVOKESTATIC && owner.equals(spawnEgg) && name.equals("getEntityName")) {
                         super.visitMethodInsn(opcode, HOOKS, name, desc, false);
                     } else {

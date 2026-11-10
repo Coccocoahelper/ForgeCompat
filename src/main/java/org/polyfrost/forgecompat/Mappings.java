@@ -36,10 +36,12 @@ final class Mappings {
     private final Map<String, String> notchFields = new HashMap<>();
     private final Map<String, String> intMethods = new HashMap<>();
     private final Map<String, String> intFields = new HashMap<>();
+    private final Map<String, String> fieldDescs = new HashMap<>();
     /** classes of the Forge jar being remapped, before remapping */
     final Map<String, ClassInfo> modClasses = new ConcurrentHashMap<>();
     final Map<String, String> mixinTargets = new ConcurrentHashMap<>();
     final Set<String> capturedFields = ConcurrentHashMap.newKeySet();
+    final Set<String> uniqueMethods = ConcurrentHashMap.newKeySet();
     private final Map<String, ClassInfo> intInfoCache = new ConcurrentHashMap<>();
 
     final Remapper toInt;
@@ -87,6 +89,7 @@ final class Mappings {
                 String name = identity ? p[4] : resolver.mapFieldName("intermediary", owner, p[4], intermediaryDescs.mapDesc(p[3]));
                 notchFields.put(p[1] + "/" + p[2] + p[3], name);
                 intFields.put(intOwner + "/" + name + runtimeDescs.mapDesc(p[3]), p[2]);
+                fieldDescs.put(intOwner + "/" + name, runtimeDescs.mapDesc(p[3]));
                 if (p[5].startsWith("field_")) srgToInt.put(p[5], name);
                 else if (!p[5].equals("-")) mcpFields.put(notchToMcp.getOrDefault(p[1], p[1]) + "/" + p[5], name);
             }
@@ -101,6 +104,14 @@ final class Mappings {
 
     String srgToRuntime(String srg) {
         return srgToInt.get(srg);
+    }
+
+    boolean hasMethod(String owner, String name, String desc) {
+        return intMethods.containsKey(owner + "/" + name + desc);
+    }
+
+    String fieldDesc(String owner, String name) {
+        return fieldDescs.get(owner + "/" + name);
     }
 
     String fieldByDesc(String owner, String desc) {

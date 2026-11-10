@@ -30,6 +30,8 @@ dependencies {
     })
     modImplementation("net.fabricmc:fabric-loader:${prop("loader_version")}")
     modImplementation("pl.tomgirl:pylon:${prop("pylon_version")}")
+    implementation("java3d:vecmath:1.5.2")
+    include("java3d:vecmath:1.5.2")
 }
 
 val viafabricStub by tasks.registering(Zip::class) {

@@ -45,6 +45,7 @@ public final class EarlyInit implements LanguageAdapter {
             "mixins.meowtils.json",
             "clickgui.mixins.json",
             "mixins.myau.json",
+            "liquidbounce.forge.mixins.json",
             Essential.TWEAKER
     );
     private static final Pattern MODID = Pattern.compile("\"modid\"\\s*:\\s*\"([^\"]+)\"");

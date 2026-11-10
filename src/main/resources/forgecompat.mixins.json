@@ -18,6 +18,7 @@
     "RenderTargetMixin",
     "ScreenMixin",
     "SoundEngineMixin",
+    "TextRendererMixin",
     "TransformTargetsMixin",
     "WorldMixin"
   ],
