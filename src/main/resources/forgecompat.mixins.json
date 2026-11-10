@@ -11,6 +11,7 @@
     "GameGuiMixin",
     "GameRendererMixin",
     "InventoryMenuScreenMixin",
+    "ItemMixin",
     "overwrite.ConnectScreenMixin",
     "overwrite.ItemInHandLayerMixin",
     "overwrite.PlayerRendererMixin",
