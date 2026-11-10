@@ -5,8 +5,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -35,7 +37,6 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.fabricmc.loader.impl.FabricLoaderImpl;
 import net.fabricmc.loader.impl.launch.FabricLauncherBase;
-import net.fabricmc.loader.impl.lib.classtweaker.api.ClassTweakerReader;
 import net.minecraft.launchwrapper.IClassTransformer;
 import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.LaunchClassLoader;
@@ -75,6 +76,7 @@ import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.Mixins;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfig;
 import org.spongepowered.asm.mixin.transformer.Config;
+import org.spongepowered.asm.mixin.transformer.IMixinTransformer;
 
 /**
  * Finds Forge mods in the mods folder, remaps them to intermediary, puts them on the game class
@@ -88,6 +90,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     /** remapped Forge mod jars, loaded as resource packs like FML does */
     public static final List<Path> RESOURCE_JARS = new CopyOnWriteArrayList<>();
     private static final List<IClassTransformer> TRANSFORMERS = new CopyOnWriteArrayList<>();
+    private static final Set<String> SKIPPED_TRANSFORMERS = Set.of("keystrokesmod.tw.ct", "keystrokesmod.tweaker.ASMTransformerClass");
+    private static final Set<String> FORGE_CLASSES = ConcurrentHashMap.newKeySet();
     /** class name -> modid */
     private static final Map<String, String> MOD_CLASSES = new LinkedHashMap<>();
     private static final String HOOKS = "org/polyfrost/forgecompat/Hooks";
@@ -110,7 +114,6 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     private static final String LISTENER_LIST = "net/minecraftforge/fml/common/eventhandler/ListenerList";
     private static final String MINECRAFT = "ave";
     private static final String START_GAME = "am";
-    private static Mappings mappings;
     private static boolean active;
     private static boolean modsInitialized;
 
@@ -154,18 +157,9 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     RESOURCE_JARS.add(remapped);
                     if (tweaker != null && !tweaker.equals(MIXIN_TWEAKER)) tweakers.add(tweaker);
                     if (plugin != null) plugins.add(plugin);
-                    String at = manifest.getValue("FMLAT");
-                    if (at != null) accessTransformers(zip, at);
                     for (String config : mixinConfigs) addMixinConfig(config);
                     LOGGER.info("Loaded Forge mod {} in {} ms{}", jar.getFileName(), (System.nanoTime() - start) / 1_000_000, cached ? " (cached)" : "");
                 }
-            }
-            if (active) {
-                try (InputStream in = ForgeCompat.class.getResourceAsStream("/forge_at.cfg")) {
-                    accessTransformer(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-                }
-                String tabs = mappings().mcpToRuntime("net/minecraft/creativetab/CreativeTabs");
-                accessWidener("mutable field " + tabs + " " + mappings().srgToRuntime("field_78032_a") + " [L" + tabs + ";\n");
             }
             if (!essentialJars.isEmpty()) {
                 long start = System.nanoTime();
@@ -189,69 +183,15 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                 String[] transformers = plugin.getASMTransformerClass();
                 if (transformers != null) for (String transformer : transformers) addTransformer(transformer);
             }
+            if (!TRANSFORMERS.isEmpty()) hookModClasses();
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to load Forge coremod", e);
         }
         LOGGER.info("Set up Forge tweakers and coremods in {} ms", (System.nanoTime() - start) / 1_000_000);
     }
 
-    private static void accessTransformers(ZipFile zip, String names) throws IOException {
-        for (String name : names.trim().split("\\s+")) {
-            ZipEntry entry = zip.getEntry("META-INF/" + name);
-            if (entry == null) continue;
-            try (InputStream in = zip.getInputStream(entry)) {
-                accessTransformer(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            }
-        }
-    }
-
-    private static void accessTransformer(String text) {
-        Mappings mappings = mappings();
-        StringBuilder out = new StringBuilder();
-        for (String line : text.split("\n")) {
-            int hash = line.indexOf('#');
-            String[] p = (hash < 0 ? line : line.substring(0, hash)).trim().split("\\s+");
-            if (p.length < 2 || p[0].startsWith("private") || p.length > 2 && p[2].startsWith("*")) continue;
-            String mcpOwner = p[1].replace('.', '/');
-            String owner = mappings.mcpToRuntime(mcpOwner);
-            if (owner == null) {
-                LOGGER.warn("Skipping access transformer for unknown class: {}", line);
-                continue;
-            }
-            boolean definal = p[0].endsWith("-f");
-            if (p.length == 2) {
-                out.append("accessible class ").append(owner).append('\n');
-                if (definal) out.append("extendable class ").append(owner).append('\n');
-                continue;
-            }
-            int paren = p[2].indexOf('(');
-            if (paren < 0) {
-                String field = mappings.srgToRuntime(p[2]);
-                String desc = field == null ? null : mappings.fieldDesc(owner, field);
-                if (desc == null) {
-                    LOGGER.warn("Skipping access transformer for unknown field: {}", line);
-                    continue;
-                }
-                String target = " field " + owner + " " + field + " " + desc + "\n";
-                out.append("accessible").append(target);
-                if (definal) out.append("mutable").append(target);
-            } else {
-                String srgDesc = p[2].substring(paren);
-                String target = " method " + owner + " " + mappings.toInt.mapMethodName(mcpOwner, p[2].substring(0, paren), srgDesc) + " " + mappings.toInt.mapMethodDesc(srgDesc) + "\n";
-                out.append("accessible").append(target);
-                if (definal) out.append("extendable").append(target);
-            }
-        }
-        accessWidener(out.toString());
-    }
-
-    private static void accessWidener(String entries) {
-        String namespace = FabricLoader.getInstance().getMappingResolver().getCurrentRuntimeNamespace();
-        String text = "accessWidener v2 " + namespace + "\n" + entries;
-        ClassTweakerReader.create(FabricLoaderImpl.INSTANCE.getClassTweaker()).read(text.getBytes(StandardCharsets.UTF_8), namespace);
-    }
-
     public static void addTransformer(String name) {
+        if (SKIPPED_TRANSFORMERS.contains(name)) return;
         try {
             TRANSFORMERS.add((IClassTransformer) newInstance(name));
         } catch (ReflectiveOperationException e) {
@@ -282,21 +222,43 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         }
     }
 
+    private static void hookModClasses() throws ReflectiveOperationException {
+        Field delegateField = FabricLauncherBase.getLauncher().getClass().getDeclaredField("classLoader");
+        delegateField.setAccessible(true);
+        Object delegate = delegateField.get(FabricLauncherBase.getLauncher());
+        Field field = delegate.getClass().getDeclaredField("mixinTransformer");
+        field.setAccessible(true);
+        IMixinTransformer mixin = (IMixinTransformer) field.get(delegate);
+        field.set(delegate, Proxy.newProxyInstance(IMixinTransformer.class.getClassLoader(), new Class<?>[]{IMixinTransformer.class}, (proxy, method, args) -> {
+            if (method.getName().equals("transformClassBytes") && args[2] instanceof byte[] bytes && FORGE_CLASSES.contains((String) args[0])) {
+                args[2] = transformModClass((String) args[1], bytes);
+            }
+            try {
+                return method.invoke(mixin, args);
+            } catch (InvocationTargetException e) {
+                throw e.getCause();
+            }
+        }));
+    }
+
+    // ponytail: mod classes are passed as-is, without remapping their Minecraft references to notch names; remap if a coremod needs them
+    private static byte[] transformModClass(String name, byte[] bytes) {
+        for (IClassTransformer transformer : TRANSFORMERS) {
+            try {
+                bytes = transformer.transform(name, name, bytes);
+            } catch (Throwable t) {
+                LOGGER.error("Forge transformer {} failed on {}", transformer.getClass().getName(), name, t);
+            }
+        }
+        return bytes;
+    }
+
     static boolean active() {
         return active;
     }
 
-    static synchronized Mappings mappings() {
-        if (mappings == null) {
-            long start = System.nanoTime();
-            try (InputStream in = ForgeCompat.class.getResourceAsStream("/forgecompat_mappings.gz")) {
-                mappings = new Mappings(in);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to load ForgeCompat mappings", e);
-            }
-            LOGGER.info("Loaded mappings in {} ms", (System.nanoTime() - start) / 1_000_000);
-        }
-        return mappings;
+    static Mappings mappings() {
+        return Mappings.get();
     }
 
     static byte[] transform(String intName, byte[] bytes) {
@@ -369,6 +331,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             }
             LOGGER.info("Initialized Forge mod {} in {} ms", name, (System.nanoTime() - start) / 1_000_000);
         });
+        RavenHooks.modsInitialized();
     }
 
     private static void injectInstances(Object mod, String modid) throws ReflectiveOperationException {
@@ -400,10 +363,15 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         for (Enumeration<? extends ZipEntry> it = zip.entries(); it.hasMoreElements(); ) {
             ZipEntry entry = it.nextElement();
             if (!entry.getName().endsWith(".class")) continue;
+            addForgeClass(entry.getName());
             try (InputStream in = zip.getInputStream(entry)) {
                 scanMod(new ClassReader(in), source);
             }
         }
+    }
+
+    private static void addForgeClass(String path) {
+        FORGE_CLASSES.add(path.substring(0, path.length() - ".class".length()).replace('/', '.'));
     }
 
     private static void scanMod(ClassReader reader, Path source) {
@@ -469,6 +437,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         mappings.uniqueMethods.clear();
         for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
             if (!entry.getKey().endsWith(".class")) continue;
+            addForgeClass(entry.getKey());
             Set<String> replaced = REPLACED_OVERWRITES.get(entry.getKey());
             if (replaced != null) entry.setValue(stripMethods(entry.getValue(), replaced));
             entry.setValue(patchEventRegister(entry.getValue()));
@@ -700,7 +669,9 @@ public class ForgeCompat implements PreLaunchEntrypoint {
 
         @Override
         public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
-            return super.visitField(access, outerInstance(this.name, name, desc), desc, signature, value);
+            name = outerInstance(this.name, name, desc);
+            if (mixinTarget != null && value == null && (access & Opcodes.ACC_STATIC) != 0 && mappings().fieldDesc(mixinTarget, name) == null) access &= ~Opcodes.ACC_FINAL;
+            return super.visitField(access, name, desc, signature, value);
         }
 
         private String unique(String owner, String name, String desc) {

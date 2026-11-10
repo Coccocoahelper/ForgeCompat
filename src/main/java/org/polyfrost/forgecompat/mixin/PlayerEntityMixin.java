@@ -5,6 +5,7 @@ import net.minecraft.entity.living.player.PlayerEntity;
 import net.minecraftforge.common.ForgeHooks;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.polyfrost.forgecompat.RavenHooks;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Constant;
@@ -34,6 +35,16 @@ public class PlayerEntityMixin {
     @Inject(method = "attack(Lnet/minecraft/entity/Entity;)V", at = @At("HEAD"), cancellable = true)
     private void forgecompat$attack(Entity target, CallbackInfo ci) {
         if (!ForgeHooks.onPlayerAttackTarget((PlayerEntity) (Object) this, target)) ci.cancel();
+    }
+
+    @ModifyConstant(method = "attack(Lnet/minecraft/entity/Entity;)V", constant = @Constant(doubleValue = 0.6D))
+    private double forgecompat$ravenKeepSprint(double slowdown) {
+        return RavenHooks.active() ? 1.0D : slowdown;
+    }
+
+    @Inject(method = "attack(Lnet/minecraft/entity/Entity;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/living/player/PlayerEntity;setSprinting(Z)V"))
+    private void forgecompat$ravenKnockback(Entity target, CallbackInfo ci) {
+        if (RavenHooks.active()) RavenHooks.knockback(target);
     }
 
     @Inject(method = "tick", at = @At("HEAD"))

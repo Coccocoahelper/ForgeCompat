@@ -25,7 +25,9 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraft.client.render.GameRenderer;
 import org.polyfrost.forgecompat.ForgeCompat;
+import org.polyfrost.forgecompat.RavenHooks;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -101,6 +103,12 @@ public class MinecraftMixin {
     private boolean forgecompat$keyEvent(Operation<Boolean> original) {
         if (forgecompat$keyInput) MinecraftForge.EVENT_BUS.post(new InputEvent.KeyInputEvent());
         return forgecompat$keyInput = original.call();
+    }
+
+    @WrapOperation(method = "tick()V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/GameRenderer;pick(F)V"))
+    private void forgecompat$ravenPick(GameRenderer renderer, float tickDelta, Operation<Void> original) {
+        if (RavenHooks.active()) RavenHooks.pick();
+        else original.call(renderer, tickDelta);
     }
 
     @WrapOperation(method = "doUse", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/ClientPlayerInteractionManager;useBlock(Lnet/minecraft/client/entity/living/player/LocalClientPlayerEntity;Lnet/minecraft/client/world/ClientWorld;Lnet/minecraft/item/ItemStack;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/util/math/Direction;Lnet/minecraft/util/math/Vec3d;)Z"))

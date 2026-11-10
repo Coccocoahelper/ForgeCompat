@@ -17,6 +17,7 @@ import java.util.zip.GZIPInputStream;
 
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.MappingResolver;
+import org.apache.logging.log4j.LogManager;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.Remapper;
@@ -44,8 +45,23 @@ final class Mappings {
     final Set<String> uniqueMethods = ConcurrentHashMap.newKeySet();
     private final Map<String, ClassInfo> intInfoCache = new ConcurrentHashMap<>();
 
+    private static Mappings instance;
+
     final Remapper toInt;
     final Remapper toNotch;
+
+    static synchronized Mappings get() {
+        if (instance == null) {
+            long start = System.nanoTime();
+            try (InputStream in = Mappings.class.getResourceAsStream("/forgecompat_mappings.gz")) {
+                instance = new Mappings(in);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to load ForgeCompat mappings", e);
+            }
+            LogManager.getLogger("ForgeCompat").info("Loaded mappings in {} ms", (System.nanoTime() - start) / 1_000_000);
+        }
+        return instance;
+    }
 
     Mappings(InputStream in) throws IOException {
         MappingResolver resolver = FabricLoader.getInstance().getMappingResolver();

@@ -50,6 +50,7 @@ public final class EarlyInit implements LanguageAdapter {
             "clickgui.mixins.json",
             "mixins.myau.json",
             "liquidbounce.forge.mixins.json",
+            "lsfix.HwidShimPlugin",
             Essential.TWEAKER
     );
     private static final Pattern MODID = Pattern.compile("\"modid\"\\s*:\\s*\"([^\"]+)\"");
@@ -67,6 +68,7 @@ public final class EarlyInit implements LanguageAdapter {
             }
         }
         if (!hidden.isEmpty()) hide(hidden);
+        AccessTransformers.apply();
     }
 
     private static void hide(Set<Path> hidden) throws IOException {

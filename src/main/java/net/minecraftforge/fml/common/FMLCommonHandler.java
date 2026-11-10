@@ -1,5 +1,7 @@
 package net.minecraftforge.fml.common;
 
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.eventhandler.EventBus;
 import net.minecraftforge.fml.relauncher.Side;
 
 public class FMLCommonHandler {
@@ -7,6 +9,10 @@ public class FMLCommonHandler {
 
     public static FMLCommonHandler instance() {
         return INSTANCE;
+    }
+
+    public EventBus bus() {
+        return MinecraftForge.EVENT_BUS;
     }
 
     public Side getSide() {

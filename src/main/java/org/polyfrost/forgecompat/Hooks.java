@@ -1,6 +1,7 @@
 package org.polyfrost.forgecompat;
 
 import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Set;
@@ -20,6 +21,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.PickaxeItem;
 import net.minecraft.item.ShovelItem;
 import net.minecraft.resource.Identifier;
+import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.Display;
 
 public final class Hooks {
@@ -29,6 +31,7 @@ public final class Hooks {
     );
 
     private static int modifiers;
+    private static final ByteBuffer mouseButtons = ByteBuffer.allocate(16);
     private static Object lookAndFeel;
 
     public static Field getDeclaredField(Class<?> owner, String name) throws NoSuchFieldException {
@@ -36,6 +39,7 @@ public final class Hooks {
             return owner.getDeclaredField(name);
         } catch (NoSuchFieldException e) {
             if (owner == Field.class && name.equals("modifiers")) return Hooks.class.getDeclaredField("modifiers");
+            if (owner == Mouse.class && name.equals("buttons")) return Hooks.class.getDeclaredField("mouseButtons");
             throw e;
         }
     }

@@ -20,6 +20,19 @@ public class RenderLivingEvent<T extends LivingEntity> extends Event {
         this.z = z;
     }
 
+    @Cancelable
+    public static class Pre<T extends LivingEntity> extends RenderLivingEvent<T> {
+        public Pre(LivingEntity entity, LivingEntityRenderer<T> renderer, double x, double y, double z) {
+            super(entity, renderer, x, y, z);
+        }
+    }
+
+    public static class Post<T extends LivingEntity> extends RenderLivingEvent<T> {
+        public Post(LivingEntity entity, LivingEntityRenderer<T> renderer, double x, double y, double z) {
+            super(entity, renderer, x, y, z);
+        }
+    }
+
     public abstract static class Specials<T extends LivingEntity> extends RenderLivingEvent<T> {
         public Specials(LivingEntity entity, LivingEntityRenderer<T> renderer, double x, double y, double z) {
             super(entity, renderer, x, y, z);

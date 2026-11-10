@@ -8,6 +8,7 @@
     "ClientPlayNetworkHandlerMixin",
     "ClientWorldMixin",
     "ConnectionMixin",
+    "EntityMixin",
     "GameGuiMixin",
     "GameRendererMixin",
     "InventoryMenuScreenMixin",
@@ -18,6 +19,7 @@
     "overwrite.ResourcePacksMixin",
     "LivingEntityMixin",
     "LivingEntityRendererMixin",
+    "LocalClientPlayerEntityMixin",
     "MinecraftMixin",
     "PlayerEntityMixin",
     "PlayerRendererMixin",
@@ -25,6 +27,7 @@
     "ScreenMixin",
     "SoundEngineMixin",
     "TextRendererMixin",
+    "TextRenderUtilsMixin",
     "TransformTargetsMixin",
     "WorldMixin"
   ],
