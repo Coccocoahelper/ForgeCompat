@@ -32,13 +32,23 @@ dependencies {
     modImplementation("pl.tomgirl:pylon:${prop("pylon_version")}")
 }
 
+val viafabricStub by tasks.registering(Zip::class) {
+    archiveFileName = "viafabric-stub.jar"
+    destinationDirectory = layout.buildDirectory.dir("stub")
+    from("src/stub/viafabric")
+}
+
 loom {
+    mods {
+        register("forgecompat") { sourceSet(sourceSets.main.get()) }
+    }
     runConfigs.all {
         preferGradleTask = true
         runDirectory = file("run")
     }
     runConfigs.named("client") {
         programArgs("--uuid", "00000000000000000000000000000000")
+        vmArg("-Dfabric.addMods=" + layout.buildDirectory.file("stub/viafabric-stub.jar").get().asFile.path)
     }
 }
 
@@ -54,9 +64,12 @@ tasks {
         options.encoding = "UTF-8"
     }
 
+    named("runClient") { dependsOn(viafabricStub) }
+
     processResources {
         val props = mapOf("version" to project.version, "loader_version" to prop("loader_version"))
         inputs.properties(props)
         filesMatching("fabric.mod.json") { expand(props) }
+        from(viafabricStub) { into("META-INF/jars") }
     }
 }

@@ -25,7 +25,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.jar.Attributes;
-import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -86,24 +85,9 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     private static final List<IClassTransformer> TRANSFORMERS = new CopyOnWriteArrayList<>();
     /** class name -> modid */
     private static final Map<String, String> MOD_CLASSES = new LinkedHashMap<>();
-    private static final List<String> SUPPORTED = Arrays.asList(
-            "com.spiderfrog.gadgets.main.OAMTweaker",
-            "de.hdskins.forge.v1855.HdSkinsPlugin",
-            "mixins.hitdelayfix.json",
-            "ragonohitdelay",
-            "accountmanager",
-            "godplace",
-            "kegiultimatelatency",
-            "keystrokes",
-            "keystrokesmod",
-            "MumbleLink",
-            "mixins.meowtils.json",
-            "clickgui.mixins.json",
-            Essential.TWEAKER
-    );
+    private static final String HOOKS = "org/polyfrost/forgecompat/Hooks";
     private static final String MIXIN_TWEAKER = "org.spongepowered.asm.launch.MixinTweaker";
     private static final Pattern DESC_CLASS = Pattern.compile("L([\\w/$]+);");
-    private static final Pattern MODID = Pattern.compile("\"modid\"\\s*:\\s*\"([^\"]+)\"");
     private static final Pattern REFMAP_VALUE = Pattern.compile("(:\\s*\")([^\"]*)\"");
     private static final String FORGE_DRAW_SCREEN = "Lnet/minecraftforge/client/ForgeHooksClient;drawScreen(Lnet/minecraft/client/gui/GuiScreen;IIF)V";
     private static final String MOD_DESC ="L" + Mod.class.getName().replace('.', '/') + ";";
@@ -124,23 +108,15 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         try (DirectoryStream<Path> jars = Files.newDirectoryStream(FabricLoaderImpl.INSTANCE.getModsDirectory().toPath(), "*.jar")) {
             for (Path jar : jars) {
                 try (ZipFile zip = new ZipFile(jar.toFile())) {
-                    if (zip.getEntry("fabric.mod.json") != null) continue;
-                    ZipEntry manifestEntry = zip.getEntry("META-INF/MANIFEST.MF");
-                    Attributes manifest = new Attributes();
-                    if (manifestEntry != null) {
-                        try (InputStream in = zip.getInputStream(manifestEntry)) {
-                            manifest = new Manifest(in).getMainAttributes();
-                        }
+                    Attributes manifest = EarlyInit.manifest(zip);
+                    if (!EarlyInit.isForgeMod(zip, manifest)) continue;
+                    if (!EarlyInit.supported(zip, manifest)) {
+                        if (zip.getEntry("fabric.mod.json") == null) LOGGER.warn("Skipping unsupported Forge mod {}", jar.getFileName());
+                        continue;
                     }
                     String tweaker = manifest.getValue("TweakClass");
                     String plugin = manifest.getValue("FMLCorePlugin");
-                    String configs = manifest.getValue("MixinConfigs");
-                    List<String> mixinConfigs = configs == null ? new ArrayList<>() : Arrays.asList(configs.trim().split("\\s*,\\s*"));
-                    if (tweaker == null && plugin == null && configs == null && zip.getEntry("mcmod.info") == null) continue;
-                    if (!SUPPORTED.contains(tweaker) && !SUPPORTED.contains(plugin) && mixinConfigs.stream().noneMatch(SUPPORTED::contains) && !SUPPORTED.contains(modId(zip))) {
-                        LOGGER.warn("Skipping unsupported Forge mod {}", jar.getFileName());
-                        continue;
-                    }
+                    List<String> mixinConfigs = EarlyInit.mixinConfigs(manifest);
 
                     if (!active) {
                         active = true;
@@ -152,7 +128,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     boolean cached = Files.exists(remapped) && Files.getLastModifiedTime(remapped).toMillis() == mtime.toMillis();
                     if (Essential.TWEAKER.equals(tweaker)) {
                         essentialJars.add(jar);
-                        if (zip.getEntry("essential.mod.json") != null || !SUPPORTED.contains(modId(zip))) continue;
+                        if (zip.getEntry("essential.mod.json") != null || !EarlyInit.SUPPORTED.contains(EarlyInit.modId(zip))) continue;
                         tweaker = null;
                     }
                     if (cached) scanMods(zip, jar);
@@ -191,15 +167,6 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             throw new RuntimeException("Failed to load Forge coremod", e);
         }
         LOGGER.info("Set up Forge tweakers and coremods in {} ms", (System.nanoTime() - start) / 1_000_000);
-    }
-
-    private static String modId(ZipFile zip) throws IOException {
-        ZipEntry entry = zip.getEntry("mcmod.info");
-        if (entry == null) return null;
-        try (InputStream in = zip.getInputStream(entry)) {
-            Matcher matcher = MODID.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            return matcher.find() ? matcher.group(1) : null;
-        }
     }
 
     public static void addTransformer(String name) {
@@ -554,6 +521,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         private final String handshakeDesc = "(ILjava/lang/String;IL" + mappings().mcpToRuntime("net/minecraft/network/EnumConnectionState") + ";";
         private final String simpleResourceManager = mappings().mcpToRuntime("net/minecraft/client/resources/SimpleReloadableResourceManager");
         private final String reloadableResourceManager = mappings().mcpToRuntime("net/minecraft/client/resources/IReloadableResourceManager");
+        private final String spawnEgg = mappings().mcpToRuntime("net/minecraft/item/ItemMonsterPlacer");
 
         private String name;
         private String mixinTarget;
@@ -640,7 +608,12 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                         super.visitInsn(Opcodes.POP);
                         super.visitMethodInsn(opcode, owner, name, handshakeDesc + ")V", itf);
                     } else if (opcode == Opcodes.INVOKEVIRTUAL && owner.equals("java/lang/Class") && name.equals("getDeclaredField")) {
-                        super.visitMethodInsn(Opcodes.INVOKESTATIC, "org/polyfrost/forgecompat/Hooks", "getDeclaredField", "(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;", false);
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, "getDeclaredField", "(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;", false);
+                    } else if (opcode == Opcodes.INVOKEVIRTUAL && mappings().intToNotch.containsKey(owner) && Hooks.FORGE_METHODS.contains(name + "/" + Type.getArgumentCount(desc))
+                            && !desc.startsWith("(I)")) {
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, name, "(Ljava/lang/Object;" + desc.substring(1), false);
+                    } else if (opcode == Opcodes.INVOKESTATIC && owner.equals(spawnEgg) && name.equals("getEntityName")) {
+                        super.visitMethodInsn(opcode, HOOKS, name, desc, false);
                     } else {
                         super.visitMethodInsn(opcode, owner, name, desc, itf);
                     }

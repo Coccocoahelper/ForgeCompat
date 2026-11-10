@@ -1,6 +1,7 @@
 package net.minecraftforge.fml.client;
 
 import net.minecraft.client.Minecraft;
+import net.minecraftforge.client.GuiIngameForge;
 import org.polyfrost.forgecompat.ForgeCompat;
 
 public class FMLClientHandler {
@@ -19,6 +20,7 @@ public class FMLClientHandler {
     }
 
     public void onInitializationComplete() {
+        getClient().gui = new GuiIngameForge(getClient());
         ForgeCompat.initMods();
     }
 }

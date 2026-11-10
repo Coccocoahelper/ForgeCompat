@@ -5,10 +5,14 @@
   "name": "Forge Compat",
   "license": "GPL-3.0-only",
   "environment": "client",
+  "languageAdapters": {
+    "forgecompat_early": "org.polyfrost.forgecompat.EarlyInit"
+  },
   "entrypoints": {
     "preLaunch": ["org.polyfrost.forgecompat.ForgeCompat"]
   },
   "mixins": ["forgecompat.mixins.json"],
+  "jars": [{"file": "META-INF/jars/viafabric-stub.jar"}],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "minecraft": "1.8.9",
