@@ -17,6 +17,8 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
  * Fabric has no class transformer hook, so Forge transformers run in preApply of TransformTargetsMixin.
  */
 public class TransformerPlugin implements IMixinConfigPlugin {
+    private static final boolean OVERWRITES_PRESENT = EarlyInit.hasMixinConfig("liquidbounce.forge.mixins.json");
+
     @Override
     public void preApply(String targetClassName, ClassNode node, String mixinClassName, IMixinInfo mixinInfo) {
         if (!mixinClassName.endsWith(".TransformTargetsMixin") || !ForgeCompat.active()) return;
@@ -69,7 +71,7 @@ public class TransformerPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        return true;
+        return OVERWRITES_PRESENT || !mixinClassName.contains(".mixin.overwrite.");
     }
 
     @Override

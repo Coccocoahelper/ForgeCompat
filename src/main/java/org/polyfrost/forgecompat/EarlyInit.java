@@ -2,12 +2,14 @@ package org.polyfrost.forgecompat;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,6 +28,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.LanguageAdapter;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.metadata.ModOrigin;
+import net.fabricmc.loader.impl.FabricLoaderImpl;
 import net.fabricmc.loader.impl.ModContainerImpl;
 import net.fabricmc.loader.impl.launch.FabricLauncherBase;
 import org.apache.logging.log4j.LogManager;
@@ -105,6 +108,19 @@ public final class EarlyInit implements LanguageAdapter {
     static boolean supported(ZipFile zip, Attributes manifest) throws IOException {
         return isForgeMod(zip, manifest) && (SUPPORTED.contains(manifest.getValue("TweakClass")) || SUPPORTED.contains(manifest.getValue("FMLCorePlugin"))
                 || mixinConfigs(manifest).stream().anyMatch(SUPPORTED::contains) || SUPPORTED.contains(modId(zip)));
+    }
+
+    static boolean hasMixinConfig(String name) {
+        try (DirectoryStream<Path> jars = Files.newDirectoryStream(FabricLoaderImpl.INSTANCE.getModsDirectory().toPath(), "*.jar")) {
+            for (Path jar : jars) {
+                try (ZipFile zip = new ZipFile(jar.toFile())) {
+                    if (mixinConfigs(manifest(zip)).contains(name)) return true;
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return false;
     }
 
     static String modId(ZipFile zip) throws IOException {

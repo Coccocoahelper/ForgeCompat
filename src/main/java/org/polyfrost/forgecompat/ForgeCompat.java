@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
@@ -65,11 +66,14 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.VarInsnNode;
 import org.spongepowered.asm.mixin.FabricUtil;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.Mixins;
+import org.spongepowered.asm.mixin.extensibility.IMixinConfig;
 import org.spongepowered.asm.mixin.transformer.Config;
 
 /**
@@ -94,6 +98,16 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     private static final String FORGE_FONT_COLOR = "Lnet/minecraft/client/gui/FontRenderer;setColor(FFFF)V";
     private static final String FORGE_ITEM_STACK = "<init>(Lnet/minecraft/item/Item;IILnet/minecraft/nbt/NBTTagCompound;)V";
     private static final String MOD_DESC ="L" + Mod.class.getName().replace('.', '/') + ";";
+    private static final String OVERWRITE_MIXINS = "net/ccbluex/liquidbounce/injection/forge/mixins/";
+    // Fabric mods can't inject into an overwritten method, so these are stripped and redone as injectors in mixin.overwrite
+    static final Map<String, Set<String>> REPLACED_OVERWRITES = Map.of(
+            OVERWRITE_MIXINS + "gui/MixinGuiConnecting.class", Set.of("func_73863_a"),
+            OVERWRITE_MIXINS + "render/MixinRenderPlayer.class", Set.of("func_177137_d"),
+            OVERWRITE_MIXINS + "render/MixinLayerHeldItem.class", Set.of("func_177141_a"),
+            OVERWRITE_MIXINS + "client/MixinResourcePackRepository.class", Set.of("func_183028_i")
+    );
+    private static final String EVENT_BUS = "net/minecraftforge/fml/common/eventhandler/EventBus";
+    private static final String LISTENER_LIST = "net/minecraftforge/fml/common/eventhandler/ListenerList";
     private static final String MINECRAFT = "ave";
     private static final String START_GAME = "am";
     private static Mappings mappings;
@@ -242,10 +256,15 @@ public class ForgeCompat implements PreLaunchEntrypoint {
 
     static void addMixinConfig(String name) {
         Mixins.addConfiguration(name);
-        for (Config config : Mixins.getConfigs()) {
-            if (config.getName().equals(name)) config.getConfig().decorate(FabricUtil.KEY_COMPATIBILITY, FabricUtil.COMPATIBILITY_0_17_1);
-        }
         try {
+            for (Config config : Mixins.getConfigs()) {
+                if (!config.getName().equals(name)) continue;
+                IMixinConfig mixinConfig = config.getConfig();
+                mixinConfig.decorate(FabricUtil.KEY_COMPATIBILITY, FabricUtil.COMPATIBILITY_0_17_1);
+                Field priority = mixinConfig.getClass().getDeclaredField("mixinPriority");
+                priority.setAccessible(true);
+                if (priority.getInt(mixinConfig) == IMixinConfig.DEFAULT_PRIORITY) priority.setInt(mixinConfig, IMixinConfig.DEFAULT_PRIORITY - 1);
+            }
             Object transformer = MixinEnvironment.getCurrentEnvironment().getActiveTransformer();
             Field processorField = transformer.getClass().getDeclaredField("processor");
             processorField.setAccessible(true);
@@ -445,6 +464,9 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         mappings.uniqueMethods.clear();
         for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
             if (!entry.getKey().endsWith(".class")) continue;
+            Set<String> replaced = REPLACED_OVERWRITES.get(entry.getKey());
+            if (replaced != null) entry.setValue(stripMethods(entry.getValue(), replaced));
+            entry.setValue(patchEventRegister(entry.getValue()));
             ClassReader reader = new ClassReader(entry.getValue());
             mappings.modClasses.put(reader.getClassName(), new Mappings.ClassInfo(reader));
             scanMod(reader, source);
@@ -463,6 +485,37 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         }
         Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING);
         Files.setLastModifiedTime(out, mtime);
+    }
+
+    private static byte[] stripMethods(byte[] bytes, Set<String> names) {
+        ClassNode node = new ClassNode();
+        new ClassReader(bytes).accept(node, 0);
+        node.methods.removeIf(method -> names.contains(method.name));
+        ClassWriter writer = new ClassWriter(0);
+        node.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] patchEventRegister(byte[] bytes) {
+        if (!new String(bytes, StandardCharsets.ISO_8859_1).contains(LISTENER_LIST)) return bytes;
+        ClassNode node = new ClassNode();
+        new ClassReader(bytes).accept(node, 0);
+        node.methods.removeIf(method -> Arrays.stream(method.instructions.toArray()).anyMatch(insn -> insn instanceof MethodInsnNode call && call.owner.equals(LISTENER_LIST)));
+        for (MethodNode method : node.methods) {
+            if ((method.access & Opcodes.ACC_STATIC) == 0 || !method.desc.equals("(L" + EVENT_BUS + ";Ljava/lang/Object;)V")) continue;
+            method.instructions.clear();
+            method.tryCatchBlocks.clear();
+            method.localVariables = null;
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+            method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, EVENT_BUS, "register", "(Ljava/lang/Object;)V", false));
+            method.instructions.add(new InsnNode(Opcodes.RETURN));
+            method.maxStack = 2;
+            method.maxLocals = 2;
+        }
+        ClassWriter writer = new ClassWriter(0);
+        node.accept(writer);
+        return writer.toByteArray();
     }
 
     private static void scanMixin(ClassReader reader, Mappings mappings) {
