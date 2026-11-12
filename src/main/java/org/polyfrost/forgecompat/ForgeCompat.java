@@ -89,6 +89,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     static final Map<String, String> GUI_FACTORIES = new ConcurrentHashMap<>();
     /** remapped Forge mod jars, loaded as resource packs like FML does */
     public static final List<Path> RESOURCE_JARS = new CopyOnWriteArrayList<>();
+    static final Map<Path, Path> ORIGINAL_JARS = new ConcurrentHashMap<>();
     private static final List<IClassTransformer> TRANSFORMERS = new CopyOnWriteArrayList<>();
     private static final Set<String> SKIPPED_TRANSFORMERS = Set.of("keystrokesmod.tw.ct", "keystrokesmod.tweaker.ASMTransformerClass");
     // only bootstraps Mixin and adds its manifest MixinConfigs, which Fabric Mixin already handles
@@ -159,6 +160,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     else remapJar(readJar(zip), jar, remapped, mtime);
                     FabricLauncherBase.getLauncher().addToClassPath(remapped);
                     RESOURCE_JARS.add(remapped);
+                    ORIGINAL_JARS.put(remapped.toAbsolutePath().normalize(), jar);
                     if (tweaker != null && !SKIPPED_TWEAKERS.contains(tweaker)) tweakers.add(tweaker);
                     if (plugin != null) plugins.add(plugin);
                     for (String config : mixinConfigs) addMixinConfig(config);
@@ -757,6 +759,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                         super.visitInsn(Opcodes.SWAP);
                         super.visitMethodInsn(opcode, owner, name, "(ILjava/lang/String;)V", itf);
                         extraStack = 1;
+                    } else if (opcode == Opcodes.INVOKEVIRTUAL && owner.equals("java/security/ProtectionDomain") && name.equals("getCodeSource")) {
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, name, "(Ljava/security/ProtectionDomain;)Ljava/security/CodeSource;", false);
                     } else if (opcode == Opcodes.INVOKESTATIC && owner.equals("javax/swing/UIManager") && name.equals("setLookAndFeel")) {
                         super.visitMethodInsn(opcode, HOOKS, name, desc, false);
                     } else if (opcode == Opcodes.INVOKESTATIC && owner.equals(spawnEgg) && name.equals("getEntityName")) {

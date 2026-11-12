@@ -90,6 +90,12 @@ final class ForgePatches {
         stream.maxLocals = 2;
         node.methods.add(stream);
 
+        String glState = mappings.mcpToRuntime("net/minecraft/client/renderer/GlStateManager");
+        MethodNode alpha = new MethodNode(Opcodes.ACC_PUBLIC, "enableAlpha", "()V", null, null);
+        alpha.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, glState, mappings.srgToRuntime("func_179141_d"), "()V", false));
+        alpha.instructions.add(new InsnNode(Opcodes.RETURN));
+        node.methods.add(alpha);
+
         for (String methodName : new String[]{mappings.srgToRuntime("func_111272_d"), mappings.srgToRuntime("func_98306_d")}) {
             MethodNode method = method(node, methodName, "()V");
             for (AbstractInsnNode insn : method.instructions.toArray()) {

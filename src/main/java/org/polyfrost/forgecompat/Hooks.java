@@ -2,6 +2,9 @@ package org.polyfrost.forgecompat;
 
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Set;
@@ -41,6 +44,17 @@ public final class Hooks {
             if (owner == Field.class && name.equals("modifiers")) return Hooks.class.getDeclaredField("modifiers");
             if (owner == Mouse.class && name.equals("buttons")) return Hooks.class.getDeclaredField("mouseButtons");
             throw e;
+        }
+    }
+
+    public static CodeSource getCodeSource(ProtectionDomain domain) {
+        CodeSource source = domain.getCodeSource();
+        if (source == null || source.getLocation() == null) return source;
+        try {
+            Path original = ForgeCompat.ORIGINAL_JARS.get(Path.of(source.getLocation().toURI()).toAbsolutePath().normalize());
+            return original == null ? source : new CodeSource(original.toUri().toURL(), source.getCodeSigners());
+        } catch (Exception e) {
+            return source;
         }
     }
 

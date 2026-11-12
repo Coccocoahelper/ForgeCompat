@@ -55,6 +55,7 @@ public final class EarlyInit implements LanguageAdapter {
             "nez",
             "mixins.showspawntime.json",
             "mixins.zombiesutils.json",
+            "gg.fkdr.forge.FkdrCoreMod",
             Essential.TWEAKER
     );
     static final String ONECONFIG_V0_TWEAKER = "cc.polyfrost.oneconfig.loader.stage0.LaunchWrapperTweaker";
@@ -120,10 +121,22 @@ public final class EarlyInit implements LanguageAdapter {
     }
 
     static boolean hasMixinConfig(String name) {
+        return anyModJar(zip -> mixinConfigs(manifest(zip)).contains(name));
+    }
+
+    static boolean hasEntry(String... names) {
+        return anyModJar(zip -> Arrays.stream(names).anyMatch(name -> zip.getEntry(name) != null));
+    }
+
+    private interface JarTest {
+        boolean test(ZipFile zip) throws IOException;
+    }
+
+    private static boolean anyModJar(JarTest test) {
         try (DirectoryStream<Path> jars = Files.newDirectoryStream(FabricLoaderImpl.INSTANCE.getModsDirectory().toPath(), "*.jar")) {
             for (Path jar : jars) {
                 try (ZipFile zip = new ZipFile(jar.toFile())) {
-                    if (mixinConfigs(manifest(zip)).contains(name)) return true;
+                    if (test.test(zip)) return true;
                 }
             }
         } catch (IOException e) {
