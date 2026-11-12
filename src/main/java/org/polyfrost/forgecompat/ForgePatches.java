@@ -1,5 +1,7 @@
 package org.polyfrost.forgecompat;
 
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
@@ -17,6 +19,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 final class ForgePatches {
     private static final String MOUSE_PRE = "net/minecraftforge/client/event/GuiScreenEvent$MouseInputEvent$Pre";
     private static final String EVENT_BUS = "net/minecraftforge/fml/common/eventhandler/EventBus";
+    private static final String FONT_RESOURCE_STREAM = "getResourceInputStream";
 
     static void apply(ClassNode node) {
         Mappings mappings = ForgeCompat.mappings();
@@ -60,6 +63,49 @@ final class ForgePatches {
                 handleInput.instructions.insert(call, after);
             }
         }
+    }
+
+    static byte[] applyFontRenderer(byte[] bytes) {
+        Mappings mappings = ForgeCompat.mappings();
+        ClassNode node = new ClassNode();
+        new ClassReader(bytes).accept(node, 0);
+        String minecraft = mappings.mcpToRuntime("net/minecraft/client/Minecraft");
+        String identifier = mappings.mcpToRuntime("net/minecraft/util/ResourceLocation");
+        String resourceManager = mappings.mcpToRuntime("net/minecraft/client/resources/IResourceManager");
+        String resource = mappings.mcpToRuntime("net/minecraft/client/resources/IResource");
+        String getInstance = mappings.srgToRuntime("func_71410_x");
+        String getResourceManager = mappings.srgToRuntime("func_110442_L");
+        String getResource = mappings.srgToRuntime("func_110536_a");
+        String getInputStream = mappings.srgToRuntime("func_110527_b");
+        String streamDesc = "(L" + identifier + ";)Ljava/io/InputStream;";
+
+        MethodNode stream = new MethodNode(Opcodes.ACC_PROTECTED, FONT_RESOURCE_STREAM, streamDesc, null, new String[]{"java/io/IOException"});
+        stream.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, minecraft, getInstance, "()L" + minecraft + ";", false));
+        stream.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, minecraft, getResourceManager, "()L" + resourceManager + ";", false));
+        stream.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        stream.instructions.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, resourceManager, getResource, "(L" + identifier + ";)L" + resource + ";", true));
+        stream.instructions.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, resource, getInputStream, "()Ljava/io/InputStream;", true));
+        stream.instructions.add(new InsnNode(Opcodes.ARETURN));
+        stream.maxStack = 2;
+        stream.maxLocals = 2;
+        node.methods.add(stream);
+
+        for (String methodName : new String[]{mappings.srgToRuntime("func_111272_d"), mappings.srgToRuntime("func_98306_d")}) {
+            MethodNode method = method(node, methodName, "()V");
+            for (AbstractInsnNode insn : method.instructions.toArray()) {
+                if (!(insn instanceof MethodInsnNode call)) continue;
+                if (call.owner.equals(minecraft) && call.name.equals(getInstance) && call.getNext() instanceof MethodInsnNode next && next.name.equals(getResourceManager)) {
+                    method.instructions.set(call, new VarInsnNode(Opcodes.ALOAD, 0));
+                    method.instructions.remove(next);
+                } else if (call.owner.equals(resourceManager) && call.name.equals(getResource) && call.getNext() instanceof MethodInsnNode next && next.name.equals(getInputStream)) {
+                    method.instructions.set(call, new MethodInsnNode(Opcodes.INVOKEVIRTUAL, node.name, FONT_RESOURCE_STREAM, streamDesc, false));
+                    method.instructions.remove(next);
+                }
+            }
+        }
+        ClassWriter writer = new ClassWriter(0);
+        node.accept(writer);
+        return writer.toByteArray();
     }
 
     private static MethodNode method(ClassNode node, String name, String desc) {

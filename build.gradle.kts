@@ -21,6 +21,9 @@ repositories {
     maven("https://maven.cloverclient.com/releases") {
         content { includeGroup("pl.tomgirl") }
     }
+    maven("https://repo.polyfrost.org/releases") {
+        content { includeGroup("org.polyfrost.oneconfig") }
+    }
 }
 
 dependencies {
@@ -31,6 +34,10 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:${prop("loader_version")}")
     modImplementation("pl.tomgirl:pylon:${prop("pylon_version")}")
     implementation("java3d:vecmath:1.5.2")
+    for (module in listOf("config", "config-impl", "hud", "ui", "utils", "events")) {
+        compileOnly("org.polyfrost.oneconfig:$module:${prop("oneconfig_version")}") { isTransitive = false }
+    }
+    compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
     include("java3d:vecmath:1.5.2")
 }
 

@@ -43,6 +43,7 @@ final class Mappings {
     final Map<String, String> mixinTargets = new ConcurrentHashMap<>();
     final Set<String> capturedFields = ConcurrentHashMap.newKeySet();
     final Set<String> uniqueMethods = ConcurrentHashMap.newKeySet();
+    final Set<String> refmapKeys = ConcurrentHashMap.newKeySet();
     private final Map<String, ClassInfo> intInfoCache = new ConcurrentHashMap<>();
 
     private static Mappings instance;

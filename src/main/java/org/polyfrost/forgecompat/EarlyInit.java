@@ -51,8 +51,13 @@ public final class EarlyInit implements LanguageAdapter {
             "mixins.myau.json",
             "liquidbounce.forge.mixins.json",
             "lsfix.HwidShimPlugin",
+            "zombiesinfo",
+            "nez",
+            "mixins.showspawntime.json",
+            "mixins.zombiesutils.json",
             Essential.TWEAKER
     );
+    static final String ONECONFIG_V0_TWEAKER = "cc.polyfrost.oneconfig.loader.stage0.LaunchWrapperTweaker";
     private static final Pattern MODID = Pattern.compile("\"modid\"\\s*:\\s*\"([^\"]+)\"");
 
     public EarlyInit() throws IOException {
@@ -109,6 +114,7 @@ public final class EarlyInit implements LanguageAdapter {
     }
 
     static boolean supported(ZipFile zip, Attributes manifest) throws IOException {
+        if (ONECONFIG_V0_TWEAKER.equals(manifest.getValue("TweakClass")) && !FabricLoader.getInstance().isModLoaded("oneconfigv1")) return false;
         return isForgeMod(zip, manifest) && (SUPPORTED.contains(manifest.getValue("TweakClass")) || SUPPORTED.contains(manifest.getValue("FMLCorePlugin"))
                 || mixinConfigs(manifest).stream().anyMatch(SUPPORTED::contains) || SUPPORTED.contains(modId(zip)));
     }

@@ -3,10 +3,12 @@ package net.minecraftforge.client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GameGui;
 import net.minecraft.client.render.Window;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
 
 public class GuiIngameForge extends GameGui {
     public static int left_height = 39;
     public static int right_height = 39;
+    private RenderGameOverlayEvent eventParent;
 
     public GuiIngameForge(Minecraft minecraft) {
         super(minecraft);

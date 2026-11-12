@@ -26,6 +26,14 @@ public class Loader {
         return new ArrayList<>(getIndexedModList().values());
     }
 
+    public File getConfigDir() {
+        return FabricLoader.getInstance().getConfigDir().toFile();
+    }
+
+    public List<ModContainer> getActiveModList() {
+        return getModList();
+    }
+
     public Map<String, ModContainer> getIndexedModList() {
         Map<String, ModContainer> mods = new LinkedHashMap<>(ForgeCompat.MODS);
         for (net.fabricmc.loader.api.ModContainer mod : FabricLoader.getInstance().getAllMods()) {

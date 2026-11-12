@@ -24,5 +24,6 @@ public class FMLClientHandler {
         getClient().gui = new GuiIngameForge(getClient());
         Hooks.applyLookAndFeel();
         ForgeCompat.initMods();
+        getClient().options.load();
     }
 }

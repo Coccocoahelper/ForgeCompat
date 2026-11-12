@@ -91,6 +91,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     public static final List<Path> RESOURCE_JARS = new CopyOnWriteArrayList<>();
     private static final List<IClassTransformer> TRANSFORMERS = new CopyOnWriteArrayList<>();
     private static final Set<String> SKIPPED_TRANSFORMERS = Set.of("keystrokesmod.tw.ct", "keystrokesmod.tweaker.ASMTransformerClass");
+    // only bootstraps Mixin and adds its manifest MixinConfigs, which Fabric Mixin already handles
+    private static final Set<String> SKIPPED_TWEAKERS = Set.of(ForgeCompat.MIXIN_TWEAKER, "com.seosean.showspawntime.tweaker.FMLLoadingPlugin", EarlyInit.ONECONFIG_V0_TWEAKER);
     private static final Set<String> FORGE_CLASSES = ConcurrentHashMap.newKeySet();
     /** class name -> modid */
     private static final Map<String, String> MOD_CLASSES = new LinkedHashMap<>();
@@ -98,6 +100,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     private static final String MIXIN_TWEAKER = "org.spongepowered.asm.launch.MixinTweaker";
     private static final Pattern DESC_CLASS = Pattern.compile("L([\\w/$]+);");
     private static final Pattern REFMAP_VALUE = Pattern.compile("(:\\s*\")([^\"]*)\"");
+    private static final Pattern REFMAP_KEY = Pattern.compile("\"([^\"]*)\"\\s*:\\s*\"");
     private static final String FORGE_DRAW_SCREEN = "Lnet/minecraftforge/client/ForgeHooksClient;drawScreen(Lnet/minecraft/client/gui/GuiScreen;IIF)V";
     private static final String FORGE_FONT_COLOR = "Lnet/minecraft/client/gui/FontRenderer;setColor(FFFF)V";
     private static final String FORGE_ITEM_STACK = "<init>(Lnet/minecraft/item/Item;IILnet/minecraft/nbt/NBTTagCompound;)V";
@@ -131,7 +134,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     Attributes manifest = EarlyInit.manifest(zip);
                     if (!EarlyInit.isForgeMod(zip, manifest)) continue;
                     if (!EarlyInit.supported(zip, manifest)) {
-                        if (zip.getEntry("fabric.mod.json") == null) LOGGER.warn("Skipping unsupported Forge mod {}", jar.getFileName());
+                        if (EarlyInit.ONECONFIG_V0_TWEAKER.equals(manifest.getValue("TweakClass")) && EarlyInit.SUPPORTED.contains(EarlyInit.modId(zip))) LOGGER.warn("Skipping Forge mod {}: it needs OneConfig installed", jar.getFileName());
+                        else if (zip.getEntry("fabric.mod.json") == null) LOGGER.warn("Skipping unsupported Forge mod {}", jar.getFileName());
                         continue;
                     }
                     String tweaker = manifest.getValue("TweakClass");
@@ -155,7 +159,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     else remapJar(readJar(zip), jar, remapped, mtime);
                     FabricLauncherBase.getLauncher().addToClassPath(remapped);
                     RESOURCE_JARS.add(remapped);
-                    if (tweaker != null && !tweaker.equals(MIXIN_TWEAKER)) tweakers.add(tweaker);
+                    if (tweaker != null && !SKIPPED_TWEAKERS.contains(tweaker)) tweakers.add(tweaker);
                     if (plugin != null) plugins.add(plugin);
                     for (String config : mixinConfigs) addMixinConfig(config);
                     LOGGER.info("Loaded Forge mod {} in {} ms{}", jar.getFileName(), (System.nanoTime() - start) / 1_000_000, cached ? " (cached)" : "");
@@ -183,7 +187,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                 String[] transformers = plugin.getASMTransformerClass();
                 if (transformers != null) for (String transformer : transformers) addTransformer(transformer);
             }
-            if (!TRANSFORMERS.isEmpty()) hookModClasses();
+            if (active) hookModClasses();
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to load Forge coremod", e);
         }
@@ -229,9 +233,11 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         Field field = delegate.getClass().getDeclaredField("mixinTransformer");
         field.setAccessible(true);
         IMixinTransformer mixin = (IMixinTransformer) field.get(delegate);
+        String fontRenderer = mappings().mcpToRuntime("net/minecraft/client/gui/FontRenderer").replace('/', '.');
         field.set(delegate, Proxy.newProxyInstance(IMixinTransformer.class.getClassLoader(), new Class<?>[]{IMixinTransformer.class}, (proxy, method, args) -> {
-            if (method.getName().equals("transformClassBytes") && args[2] instanceof byte[] bytes && FORGE_CLASSES.contains((String) args[0])) {
-                args[2] = transformModClass((String) args[1], bytes);
+            if (method.getName().equals("transformClassBytes") && args[2] instanceof byte[] bytes) {
+                if (FORGE_CLASSES.contains((String) args[0])) args[2] = transformModClass((String) args[1], bytes);
+                else if (fontRenderer.equals(args[0])) args[2] = ForgePatches.applyFontRenderer(bytes);
             }
             try {
                 return method.invoke(mixin, args);
@@ -435,6 +441,12 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         mappings.mixinTargets.clear();
         mappings.capturedFields.clear();
         mappings.uniqueMethods.clear();
+        mappings.refmapKeys.clear();
+        for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+            if (!isRefmap(entry.getKey())) continue;
+            Matcher matcher = REFMAP_KEY.matcher(new String(entry.getValue(), StandardCharsets.UTF_8));
+            while (matcher.find()) mappings.refmapKeys.add(matcher.group(1));
+        }
         for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
             if (!entry.getKey().endsWith(".class")) continue;
             addForgeClass(entry.getKey());
@@ -451,7 +463,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
             for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
                 byte[] bytes = entry.getValue();
                 if (entry.getKey().endsWith(".class")) bytes = remap(bytes, mappings.toInt, true, false);
-                else if (entry.getKey().endsWith(".refmap.json") || entry.getKey().endsWith("-refmap.json")) bytes = remapRefmap(bytes, mappings);
+                else if (isRefmap(entry.getKey())) bytes = remapRefmap(bytes, mappings);
                 zos.putNextEntry(new ZipEntry(entry.getKey()));
                 zos.write(bytes);
                 zos.closeEntry();
@@ -459,6 +471,10 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         }
         Files.move(tmp, out, StandardCopyOption.REPLACE_EXISTING);
         Files.setLastModifiedTime(out, mtime);
+    }
+
+    private static boolean isRefmap(String name) {
+        return name.endsWith(".refmap.json") || name.endsWith("-refmap.json");
     }
 
     private static byte[] stripMethods(byte[] bytes, Set<String> names) {
@@ -598,7 +614,8 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                     value = "L" + mappings().mcpToRuntime("net/minecraft/client/renderer/GlStateManager") + ";" + mappings().srgToRuntime("func_179131_c") + "(FFFF)V";
                 } else if (FORGE_ITEM_STACK.equals(value)) {
                     value = "<init>(L" + mappings().mcpToRuntime("net/minecraft/item/Item") + ";II)V";
-                } else if (value instanceof String s && s.contains("net/minecraftforge/")) {
+                } else if (value instanceof String s && (s.contains("net/minecraftforge/") || s.contains("net/minecraft/") && !mappings().refmapKeys.contains(s))) {
+                    // targets on Forge-added members are left out of refmaps, so their MCP class names are mapped here
                     Matcher matcher = DESC_CLASS.matcher(s);
                     StringBuilder out = new StringBuilder();
                     while (matcher.find()) {
