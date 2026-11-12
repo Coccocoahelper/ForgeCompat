@@ -17,6 +17,7 @@
     "overwrite.ItemInHandLayerMixin",
     "overwrite.PlayerRendererMixin",
     "overwrite.ResourcePacksMixin",
+    "PacketTransformTargetsMixin",
     "LivingEntityMixin",
     "LivingEntityRendererMixin",
     "LocalClientPlayerEntityMixin",

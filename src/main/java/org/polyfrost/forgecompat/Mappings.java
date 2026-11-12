@@ -50,6 +50,8 @@ final class Mappings {
 
     final Remapper toInt;
     final Remapper toNotch;
+    final Remapper toSrg;
+    final Remapper fromSrg;
 
     static synchronized Mappings get() {
         if (instance == null) {
@@ -89,16 +91,26 @@ final class Mappings {
         }
         SimpleRemapper intermediaryDescs = new SimpleRemapper(notchToIntermediary);
         SimpleRemapper runtimeDescs = new SimpleRemapper(notchToInt);
+        SimpleRemapper mcpDescs = new SimpleRemapper(notchToMcp);
+        Map<String, String> toSrgMethods = new HashMap<>();
+        Map<String, String> toSrgFields = new HashMap<>();
+        Map<String, String> fromSrgMethods = new HashMap<>();
+        Map<String, String> fromSrgFields = new HashMap<>();
         for (String[] p : members) {
             String owner = notchToIntermediary.getOrDefault(p[1], p[1]).replace('/', '.');
             String intOwner = notchToInt.getOrDefault(p[1], p[1]);
+            String mcpOwner = notchToMcp.getOrDefault(p[1], p[1]);
             if (p[0].equals("M")) {
                 String name = identity ? p[4] : resolver.mapMethodName("intermediary", owner, p[4], intermediaryDescs.mapMethodDesc(p[3]));
+                String runtimeDesc = runtimeDescs.mapMethodDesc(p[3]);
                 notchMethods.put(p[1] + "/" + p[2] + p[3], name);
-                intMethods.put(intOwner + "/" + name + runtimeDescs.mapMethodDesc(p[3]), p[2]);
+                intMethods.put(intOwner + "/" + name + runtimeDesc, p[2]);
+                if (!p[5].equals("-")) {
+                    toSrgMethods.put(intOwner + "/" + name + runtimeDesc, p[5]);
+                    fromSrgMethods.put(mcpOwner + "/" + p[5] + mcpDescs.mapMethodDesc(p[3]), name);
+                }
                 if (p[5].startsWith("func_")) {
                     srgToInt.put(p[5], name);
-                    String runtimeDesc = runtimeDescs.mapMethodDesc(p[3]);
                     srgMethods.put(p[5] + runtimeDesc, name);
                     srgMethods.put(intOwner + "/" + p[5] + runtimeDesc, name);
                 }
@@ -107,12 +119,18 @@ final class Mappings {
                 notchFields.put(p[1] + "/" + p[2] + p[3], name);
                 intFields.put(intOwner + "/" + name + runtimeDescs.mapDesc(p[3]), p[2]);
                 fieldDescs.put(intOwner + "/" + name, runtimeDescs.mapDesc(p[3]));
+                if (!p[5].equals("-")) {
+                    toSrgFields.put(intOwner + "/" + name + runtimeDescs.mapDesc(p[3]), p[5]);
+                    fromSrgFields.put(mcpOwner + "/" + p[5] + mcpDescs.mapDesc(p[3]), name);
+                }
                 if (p[5].startsWith("field_")) srgToInt.put(p[5], name);
                 else if (!p[5].equals("-")) mcpFields.put(notchToMcp.getOrDefault(p[1], p[1]) + "/" + p[5], name);
             }
         }
         toInt = new HierarchyRemapper(notchToInt, notchMethods, notchFields, this::notchInfo, true);
         toNotch = new HierarchyRemapper(intToNotch, intMethods, intFields, this::intInfo, false);
+        toSrg = new HierarchyRemapper(intToMcp, toSrgMethods, toSrgFields, this::intInfo, false);
+        fromSrg = new HierarchyRemapper(mcpToInt, fromSrgMethods, fromSrgFields, this::mcpInfo, false);
     }
 
     String mcpToRuntime(String mcpName) {
@@ -183,10 +201,12 @@ final class Mappings {
             return mod != null ? mod : intInfo(name);
         }
         ClassInfo info = intInfo(intName);
-        if (info == null) return null;
-        String[] interfaces = new String[info.interfaces.length];
-        for (int i = 0; i < interfaces.length; i++) interfaces[i] = intToNotch.getOrDefault(info.interfaces[i], info.interfaces[i]);
-        return new ClassInfo(info.access, info.superName == null ? null : intToNotch.getOrDefault(info.superName, info.superName), interfaces);
+        return info == null ? null : info.map(intToNotch);
+    }
+
+    private ClassInfo mcpInfo(String name) {
+        ClassInfo info = intInfo(mcpToInt.getOrDefault(name, name));
+        return info == null ? null : info.map(intToMcp);
     }
 
     String commonSuperClass(String a, String b) {
@@ -219,6 +239,12 @@ final class Mappings {
 
         ClassInfo(ClassReader reader) {
             this(reader.getAccess(), reader.getSuperName(), reader.getInterfaces());
+        }
+
+        ClassInfo map(Map<String, String> names) {
+            String[] mapped = new String[interfaces.length];
+            for (int i = 0; i < mapped.length; i++) mapped[i] = names.getOrDefault(interfaces[i], interfaces[i]);
+            return new ClassInfo(access, superName == null ? null : names.getOrDefault(superName, superName), mapped);
         }
 
         boolean isInterface() {

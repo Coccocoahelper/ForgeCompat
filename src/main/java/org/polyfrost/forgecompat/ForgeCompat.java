@@ -91,6 +91,7 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     public static final List<Path> RESOURCE_JARS = new CopyOnWriteArrayList<>();
     static final Map<Path, Path> ORIGINAL_JARS = new ConcurrentHashMap<>();
     private static final List<IClassTransformer> TRANSFORMERS = new CopyOnWriteArrayList<>();
+    private static final Set<IClassTransformer> SRG_TRANSFORMERS = ConcurrentHashMap.newKeySet();
     private static final Set<String> SKIPPED_TRANSFORMERS = Set.of("keystrokesmod.tw.ct", "keystrokesmod.tweaker.ASMTransformerClass");
     // only bootstraps Mixin and adds its manifest MixinConfigs, which Fabric Mixin already handles
     private static final Set<String> SKIPPED_TWEAKERS = Set.of(ForgeCompat.MIXIN_TWEAKER, "com.seosean.showspawntime.tweaker.FMLLoadingPlugin", EarlyInit.ONECONFIG_V0_TWEAKER);
@@ -187,7 +188,9 @@ public class ForgeCompat implements PreLaunchEntrypoint {
                 IFMLLoadingPlugin plugin = (IFMLLoadingPlugin) newInstance(name);
                 plugin.injectData(new HashMap<>());
                 String[] transformers = plugin.getASMTransformerClass();
-                if (transformers != null) for (String transformer : transformers) addTransformer(transformer);
+                IFMLLoadingPlugin.SortingIndex index = plugin.getClass().getAnnotation(IFMLLoadingPlugin.SortingIndex.class);
+                boolean srg = index != null && index.value() > 1000;
+                if (transformers != null) for (String transformer : transformers) addTransformer(transformer, srg);
             }
             if (active) hookModClasses();
         } catch (ReflectiveOperationException e) {
@@ -197,9 +200,15 @@ public class ForgeCompat implements PreLaunchEntrypoint {
     }
 
     public static void addTransformer(String name) {
+        addTransformer(name, false);
+    }
+
+    private static void addTransformer(String name, boolean srg) {
         if (SKIPPED_TRANSFORMERS.contains(name)) return;
         try {
-            TRANSFORMERS.add((IClassTransformer) newInstance(name));
+            IClassTransformer transformer = (IClassTransformer) newInstance(name);
+            TRANSFORMERS.add(transformer);
+            if (srg) SRG_TRANSFORMERS.add(transformer);
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to load Forge transformer " + name, e);
         }
@@ -275,14 +284,20 @@ public class ForgeCompat implements PreLaunchEntrypoint {
         String mcp = mappings.intToMcp.getOrDefault(intName, intName);
         bytes = remap(bytes, mappings.toNotch, false, true);
         if (notch.equals(MINECRAFT)) bytes = addInitHook(bytes);
+        boolean srg = false;
         for (IClassTransformer transformer : TRANSFORMERS) {
+            if (SRG_TRANSFORMERS.contains(transformer) != srg) {
+                srg = !srg;
+                bytes = srg ? remap(remap(bytes, mappings.toInt, false, false), mappings.toSrg, false, false)
+                        : remap(remap(bytes, mappings.fromSrg, false, false), mappings.toNotch, false, false);
+            }
             try {
                 bytes = transformer.transform(notch.replace('/', '.'), mcp.replace('/', '.'), bytes);
             } catch (Throwable t) {
                 LOGGER.error("Forge transformer {} failed on {}", transformer.getClass().getName(), mcp, t);
             }
         }
-        return remap(bytes, mappings.toInt, false, false);
+        return remap(bytes, srg ? mappings.fromSrg : mappings.toInt, false, false);
     }
 
     private static byte[] addInitHook(byte[] bytes) {

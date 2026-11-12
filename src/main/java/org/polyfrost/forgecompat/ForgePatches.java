@@ -94,6 +94,7 @@ final class ForgePatches {
         MethodNode alpha = new MethodNode(Opcodes.ACC_PUBLIC, "enableAlpha", "()V", null, null);
         alpha.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, glState, mappings.srgToRuntime("func_179141_d"), "()V", false));
         alpha.instructions.add(new InsnNode(Opcodes.RETURN));
+        alpha.maxLocals = 1;
         node.methods.add(alpha);
 
         for (String methodName : new String[]{mappings.srgToRuntime("func_111272_d"), mappings.srgToRuntime("func_98306_d")}) {

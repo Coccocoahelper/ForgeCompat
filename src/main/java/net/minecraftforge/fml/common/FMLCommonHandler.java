@@ -22,4 +22,9 @@ public class FMLCommonHandler {
     public Side getEffectiveSide() {
         return Side.CLIENT;
     }
+
+    public void exitJava(int exitCode, boolean hardExit) {
+        if (hardExit) Runtime.getRuntime().halt(exitCode);
+        else System.exit(exitCode);
+    }
 }

@@ -50,6 +50,7 @@ public final class EarlyInit implements LanguageAdapter {
             "clickgui.mixins.json",
             "mixins.myau.json",
             "liquidbounce.forge.mixins.json",
+            "loam",
             "lsfix.HwidShimPlugin",
             "zombiesinfo",
             "nez",
