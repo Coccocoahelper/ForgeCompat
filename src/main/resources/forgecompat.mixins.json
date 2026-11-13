@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_8",
   "client": [
     "BlockMixin",
+    "ButtonWidgetMixin",
     "ClientPlayNetworkHandlerMixin",
     "ClientWorldMixin",
     "ConnectionMixin",
