@@ -51,6 +51,7 @@ public final class EarlyInit implements LanguageAdapter {
             "mixins.myau.json",
             "liquidbounce.forge.mixins.json",
             "loam",
+            "creamykeys",
             "lsfix.HwidShimPlugin",
             "zombiesinfo",
             "nez",
@@ -117,7 +118,7 @@ public final class EarlyInit implements LanguageAdapter {
 
     static boolean supported(ZipFile zip, Attributes manifest) throws IOException {
         if (ONECONFIG_V0_TWEAKER.equals(manifest.getValue("TweakClass")) && !FabricLoader.getInstance().isModLoaded("oneconfigv1")) return false;
-        return isForgeMod(zip, manifest) && (SUPPORTED.contains(manifest.getValue("TweakClass")) || SUPPORTED.contains(manifest.getValue("FMLCorePlugin"))
+        return isForgeMod(zip, manifest) && (Boolean.getBoolean("forgecompat.ignoreSupportedList") || SUPPORTED.contains(manifest.getValue("TweakClass")) || SUPPORTED.contains(manifest.getValue("FMLCorePlugin"))
                 || mixinConfigs(manifest).stream().anyMatch(SUPPORTED::contains) || SUPPORTED.contains(modId(zip)));
     }
 
